@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#1b4f8f" />
+    <meta name="description" content="Maßkrug-Marathon – sammle bis zum Zapfenstreich so viel Promille wie möglich, ohne zu kotzen!" />
+    <title>Maßkrug-Marathon</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍺</text></svg>" />
+    <style>
+      /* Webfont "Lilita One" wird in src/render/scenes/BootScene.ts per FontFace-API geladen */
+      html, body {
+        margin: 0; padding: 0; height: 100%; overflow: hidden;
+        background: #12233d;
+        touch-action: none; -webkit-user-select: none; user-select: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      #game { position: fixed; inset: 0; }
+      #game canvas { display: block; }
+
+      /* ---------- Touch-Steuerung (src/input/TouchInput.ts) ---------- */
+      #touch-controls {
+        position: absolute; inset: 0; pointer-events: none; z-index: 10;
+        font-family: 'Lilita One', system-ui, sans-serif;
+      }
+      #touch-controls .joy-zone {
+        position: absolute; left: 0; bottom: 0; width: 45%; height: 55%;
+        pointer-events: auto; touch-action: none;
+      }
+      #touch-controls .joy-base {
+        position: absolute; left: calc(24px + env(safe-area-inset-left)); bottom: calc(24px + env(safe-area-inset-bottom));
+        width: 130px; height: 130px; border-radius: 50%;
+        background: rgba(255,255,255,0.18); border: 3px solid rgba(255,255,255,0.45);
+      }
+      #touch-controls .joy-knob {
+        position: absolute; left: 35px; top: 35px; width: 60px; height: 60px; border-radius: 50%;
+        background: rgba(255,225,77,0.85); border: 3px solid #2b1d14;
+      }
+      #touch-controls .btn-zone {
+        position: absolute; right: calc(20px + env(safe-area-inset-right)); bottom: calc(24px + env(safe-area-inset-bottom));
+        display: flex; gap: 16px; align-items: flex-end; pointer-events: auto;
+      }
+      #touch-controls .tbtn {
+        width: 86px; height: 86px; border-radius: 50%; border: 3px solid #2b1d14;
+        font-size: 30px; line-height: 1; color: #2b1d14; touch-action: none; font-family: inherit;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        box-shadow: 0 4px 0 rgba(0,0,0,0.35);
+      }
+      #touch-controls .tbtn span { font-size: 13px; margin-top: 4px; font-family: inherit; }
+      #touch-controls .tbtn:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(0,0,0,0.35); }
+      #touch-controls .tbtn-action { background: #ffe14d; width: 100px; height: 100px; }
+      #touch-controls .tbtn-burp { background: #8fd3ff; margin-bottom: 40px; }
+      #touch-controls .tbtn-burp.cooldown { opacity: 0.45; }
+    </style>
+  </head>
+  <body>
+    <div id="game"></div>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

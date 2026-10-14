@@ -1,0 +1,26 @@
+{
+  "name": "masskrug-marathon",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Maßkrug-Marathon – ein kleines, witziges 2D-Volksfest-Browserspiel (Phaser 3).",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "gen:audio": "node scripts/generate-audio.mjs"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "howler": "^2.2.4",
+    "phaser": "^3.90.0"
+  },
+  "devDependencies": {
+    "@types/howler": "^2.2.13",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.7",
+    "vitest": "^3.2.7"
+  }
+}
