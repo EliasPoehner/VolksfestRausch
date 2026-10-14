@@ -44,10 +44,12 @@ npm run dev        # Dev-Server auf http://localhost:5173
 Weitere Befehle:
 
 ```bash
-npm test           # Unit-Tests der Spiellogik (Vitest)
+npm test           # Unit-Tests der Spiellogik + Balance-Bots (Vitest)
 npm run typecheck  # TypeScript prüfen
 npm run gen:audio  # Sounds & Blasmusik neu synthetisieren → public/assets/audio
 ```
+
+**Balance-Bots** (`tests/balance.test.ts`, Strategien in `tests/support/bots.ts`): Vier Bots (nur Maß, gierig, wahllos, klug) spielen je 20 komplette Runden über `GameState`. Die Tests prüfen z. B., dass kluges Spiel Maß-Spam deutlich schlägt und Spam fast immer im Sanka endet. Wer `balance.ts` ändert und hier Rot sieht, hat das Balancing gekippt. Mehr Runden für eine genauere Auswertung: `BALANCE_SEEDS=60 npm test`.
 
 ## Build
 

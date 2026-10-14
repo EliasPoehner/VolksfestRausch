@@ -30,18 +30,18 @@ export class MenuScene extends Phaser.Scene {
 
     // Anleitung
     const howto = [
-      'Sammle bis 23:00 Uhr so viel Promille wie möglich – ohne zu kotzen!',
-      '',
+      'Sammle bis 23:00 Uhr so viel Promille wie möglich!',
       'Laufen: WASD / Pfeiltasten   ·   Nehmen: E / Leertaste   ·   Rülpsen: R',
-      'Brezn, Hendl, Steckerlfisch & Wasser senken die Kotzleiste.',
+      'Brezn, Hendl & Steckerlfisch füllen den Magen, Wasser hilft sofort.',
       'Kohlensäure erhöht den Sprudel-Druck → rülpsen hilft (meistens).',
       'Wild durcheinander trinken füllt den Mischmasch-Meter. Obacht!',
       'Ruft wer "Prost!", hast du 3 Sekunden zum Mittrinken.',
+      'Kotzen kostet Promille – beim dritten Mal kommt der Sanka.',
     ];
     const panel = this.add.graphics();
     panel.fillStyle(0x000000, 0.45).fillRoundedRect(W / 2 - 470, 222, 940, 250, 20);
     panel.lineStyle(3, 0xffffff, 0.5).strokeRoundedRect(W / 2 - 470, 222, 940, 250, 20);
-    this.add.text(W / 2, 347, howto.join('\n'), textStyle(22, COLORS.cream, { align: 'center', lineSpacing: 8, strokeThickness: 4 })).setOrigin(0.5);
+    this.add.text(W / 2, 347, howto.join('\n'), textStyle(22, COLORS.cream, { align: 'center', lineSpacing: 4, strokeThickness: 4 })).setOrigin(0.5);
 
     makeButton(this, W / 2, 545, 'Ozapft is!', () => this.startGame(), { width: 320, height: 84, size: 42 });
 

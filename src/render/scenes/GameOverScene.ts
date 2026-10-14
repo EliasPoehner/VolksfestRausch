@@ -53,11 +53,10 @@ export class GameOverScene extends Phaser.Scene {
 
     const s = r.stats;
     const lines = [
-      `Getränke: ${s.drinks}   ·   Rülpser: ${s.burps}${s.failedBurps ? ` (${s.failedBurps} daneben)` : ''}`,
+      `Getränke: ${s.drinks}   ·   Rülpser: ${s.burps}${s.failedBurps ? ` (${s.failedBurps} daneben)` : ''}   ·   Gekotzt: ${s.vomits}×`,
       `Brotzeiten: ${s.foods}   ·   Prost mitgetrunken: ${s.prosts}   ·   Spitze: ${formatPromille(s.maxPromille)}`,
-      `Gekotzt: ${s.vomits}×`,
     ];
-    this.add.text(W / 2, 392, lines.join('\n'), textStyle(22, COLORS.cream, { align: 'center', lineSpacing: 10, strokeThickness: 4 })).setOrigin(0.5);
+    this.add.text(W / 2, 385, lines.join('\n'), textStyle(22, COLORS.cream, { align: 'center', lineSpacing: 10, strokeThickness: 4 })).setOrigin(0.5);
 
     const hsText = this.add.text(W / 2, 455, 'Highscore wird gespeichert…', textStyle(24, COLORS.gold)).setOrigin(0.5);
     void highscores.submit({

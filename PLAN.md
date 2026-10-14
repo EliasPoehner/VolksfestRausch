@@ -2,7 +2,7 @@
 
 ## Kontext (für einen neuen Chat)
 
-Repo: `eliaspoehner/volksfestrausch`, Branch `claude/blissful-cannon-phh4ur`.
+Repo: `eliaspoehner/volksfestrausch`, Branch `claude/blissful-cannon-phh4ur` (Schritt 1 weiter auf `claude/admiring-einstein-mtqp81`).
 Spiel: 2D-Volksfest-Browserspiel (Vite + TypeScript + Phaser 3). Ziel: bis 23:00 (180 s Echtzeit) so viel Promille wie möglich, ohne dass der Sanka kommt.
 
 **Architektur:** Die Logik ist renderer-unabhängig (`src/core/`, `GameState.step(dt, cmd)`). Alle Zahlen stehen in `src/config/balance.ts`. Die Phaser-Szenen (`src/render/scenes/`) lesen nur den Zustand und spielen Events aus `GameState.events` ab. Tests: `npm test` (Vitest, `tests/core.test.ts`), Typecheck: `npm run typecheck`.
@@ -24,9 +24,22 @@ Spiel: 2D-Volksfest-Browserspiel (Vite + TypeScript + Phaser 3). Ziel: bis 23:00
 
 ## Schritt 1 – Absichern (klein, zuerst)
 
-- [ ] Im Browser spielen (`npm run dev`): Kotz-Sequenz, HUD (4 Leisten, Sanka-Karte, Buff-Anzeige), Endscreen-Layout, Touch-Variante (E-Hämmern über den Trink-Button).
-- [ ] **Balance-Bots als festen Test** einbauen (`tests/balance.test.ts`): 3 bis 4 Strategien (nur Maß, klug, gierig, zufällig) über je ca. 30 Seeds. Erwartungen als Assertions, z. B. „kluger Bot schlägt Spam-Bot im Schnitt“ und „Spam-Bot erreicht den Sanka in über 80 % der Runden“. Laufzeit klein halten (Vitest-Timeout beachten, Seeds reduzieren oder Timeout setzen).
-- [ ] Falls der kluge Bot zu sicher ist: Stellschrauben in `balance.ts` (`METERS.magen.kotzReductionAtFull`, `VOMIT.kotzAfter`, passive Kotz-Rate).
+- [x] Im Browser spielen (`npm run dev`): Kotz-Sequenz, HUD (4 Leisten, Sanka-Karte, Buff-Anzeige), Endscreen-Layout, Touch-Variante (E-Hämmern über den Trink-Button).
+  - Per Headless-Chromium geprüft (Desktop 1280×720 und Touch 844×390): Kotzen → „Noch 2× bis zum Sanka“, Hämmern verkürzt den Kontrollverlust per Taste E und per Trink-Button um je 0,22 s, beim 3. Mal Sanka und Endscreen, keine Konsolenfehler.
+  - Behoben: Endscreen-Statistik überlappte mit „Neuer Rekord!“, Menü-Anleitung stieß oben an den Kasten und erwähnte die 3 Leben und den Magen noch nicht.
+- [x] **Balance-Bots als festen Test** einbauen (`tests/balance.test.ts`): 3 bis 4 Strategien (nur Maß, klug, gierig, zufällig) über je ca. 30 Seeds. Erwartungen als Assertions, z. B. „kluger Bot schlägt Spam-Bot im Schnitt“ und „Spam-Bot erreicht den Sanka in über 80 % der Runden“. Laufzeit klein halten (Vitest-Timeout beachten, Seeds reduzieren oder Timeout setzen).
+- [x] Falls der kluge Bot zu sicher ist: nicht nötig. Er kotzt in ca. 40 % der Runden einmal, kommt aber nie in den Sanka.
+
+**Ergebnis der Balance-Bots** (20 Seeds, echte Steuerung über `GameState.step`):
+
+| Strategie | Ø Score | Ø ‰ | Sanka | mind. 1× gekotzt | Ø Getränke |
+|---|---|---|---|---|---|
+| Maß-Spam | 1,21 | 3,19 | 100 % | 100 % | 17,5 |
+| Gierig | 1,59 | 3,26 | 90 % | 95 % | 23,1 |
+| Wahllos | 0,99 | 2,61 | 100 % | 100 % | 18,3 |
+| Klug | 2,44 | 2,56 | 0 % | 40 % | 15,0 |
+
+Beobachtung 1 („gute Spieler kotzen nie“) stimmt damit nur halb: Das Kotz-Netz greift auch beim klugen Bot, kostet ihn aber wenig.
 
 ## Schritt 2 – C: Dramaturgie des Abends (Zeit wird mechanisch)
 
