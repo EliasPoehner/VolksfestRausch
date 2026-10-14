@@ -47,14 +47,17 @@ export class GameOverScene extends Phaser.Scene {
     this.add.text(W / 2, 275, formatPromille(r.promille), textStyle(64, COLORS.cream)).setOrigin(0.5);
     if (!won) {
       this.add.text(W / 2, 320, `Sanka-Abzug: Score ${formatPromille(r.score)}`, textStyle(22, '#ffb3b3')).setOrigin(0.5);
+    } else if (r.score < Math.round(r.promille * 100) / 100) {
+      this.add.text(W / 2, 320, `Kotz-Abzug (${r.stats.vomits}×): Score ${formatPromille(r.score)}`, textStyle(22, '#ffb3b3')).setOrigin(0.5);
     }
 
     const s = r.stats;
     const lines = [
       `Getränke: ${s.drinks}   ·   Rülpser: ${s.burps}${s.failedBurps ? ` (${s.failedBurps} daneben)` : ''}`,
       `Brotzeiten: ${s.foods}   ·   Prost mitgetrunken: ${s.prosts}   ·   Spitze: ${formatPromille(s.maxPromille)}`,
+      `Gekotzt: ${s.vomits}×`,
     ];
-    this.add.text(W / 2, 380, lines.join('\n'), textStyle(22, COLORS.cream, { align: 'center', lineSpacing: 10, strokeThickness: 4 })).setOrigin(0.5);
+    this.add.text(W / 2, 392, lines.join('\n'), textStyle(22, COLORS.cream, { align: 'center', lineSpacing: 10, strokeThickness: 4 })).setOrigin(0.5);
 
     const hsText = this.add.text(W / 2, 455, 'Highscore wird gespeichert…', textStyle(24, COLORS.gold)).setOrigin(0.5);
     void highscores.submit({

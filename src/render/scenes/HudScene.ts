@@ -26,8 +26,8 @@ export class HudScene extends Phaser.Scene {
   private flashText!: Phaser.GameObjects.Text;
   private pauseLayer!: Phaser.GameObjects.Container;
   private muteIcon!: Phaser.GameObjects.Text;
-  private bars!: { kotz: Bar; sprudel: Bar; misch: Bar };
-  private shown = { kotz: 0, sprudel: 0, misch: 0 };
+  private bars!: { kotz: Bar; sprudel: Bar; misch: Bar; magen: Bar };
+  private shown = { kotz: 0, sprudel: 0, misch: 0, magen: 0 };
   private onPause = (p: boolean) => this.pauseLayer.setVisible(p);
   private t = 0;
 
@@ -40,7 +40,7 @@ export class HudScene extends Phaser.Scene {
   create(): void {
     const { width: W, height: H } = this.scale.gameSize;
     this.t = 0;
-    this.shown = { kotz: 0, sprudel: 0, misch: 0 };
+    this.shown = { kotz: 0, sprudel: 0, misch: 0, magen: 0 };
 
     // Hintergrundleiste
     const bg = this.add.graphics();
@@ -52,13 +52,14 @@ export class HudScene extends Phaser.Scene {
     this.add.text(72, 16, 'PROMILLE', textStyle(13, '#cfd8e3', { strokeThickness: 3 }));
 
     const mk = (x: number, label: string, color: number, marker?: number): Bar => ({
-      x, y: 48, w: 220, h: 22, color, marker,
+      x, y: 48, w: 190, h: 22, color, marker,
       label: this.add.text(x, 20, label, textStyle(16, COLORS.cream, { strokeThickness: 3 })),
     });
     this.bars = {
-      kotz: mk(270, 'Kotzleiste', 0x7ed957, METERS.kotz.warningThreshold),
-      sprudel: mk(520, 'Sprudel-Druck', 0x6fc3ff, METERS.sprudel.dangerThreshold),
-      misch: mk(770, 'Mischmasch', 0xc77dff, METERS.misch.doubleKotzThreshold),
+      kotz: mk(262, 'Kotzleiste', 0x7ed957, METERS.kotz.warningThreshold),
+      sprudel: mk(462, 'Sprudel-Druck', 0x6fc3ff, METERS.sprudel.dangerThreshold),
+      misch: mk(662, 'Mischmasch', 0xc77dff, METERS.misch.doubleKotzThreshold),
+      magen: mk(862, 'Magen', 0xe0a458),
     };
     this.g = this.add.graphics();
 
@@ -107,22 +108,29 @@ export class HudScene extends Phaser.Scene {
     this.shown.kotz += (m.kotz - this.shown.kotz) * ease;
     this.shown.sprudel += (m.sprudel - this.shown.sprudel) * ease;
     this.shown.misch += (m.misch - this.shown.misch) * ease;
+    this.shown.magen += (m.magen - this.shown.magen) * ease;
 
     this.g.clear();
     this.drawBar(this.bars.kotz, this.shown.kotz, m.kotz >= METERS.kotz.warningThreshold);
     this.drawBar(this.bars.sprudel, this.shown.sprudel, m.sprudel > METERS.sprudel.dangerThreshold);
     this.drawBar(this.bars.misch, this.shown.misch, m.misch >= METERS.misch.doubleKotzThreshold);
-    this.bars.misch.label.setText(m.kotzMultiplier > 1 ? 'Mischmasch  ×2 Kotz!' : 'Mischmasch');
+    this.drawBar(this.bars.magen, this.shown.magen, false);
+    this.bars.misch.label.setText(m.kotzMultiplier > 1 ? 'Mischmasch ×2!' : 'Mischmasch');
+    this.bars.magen.label.setText(m.emptyStomach > 0 ? 'Magen leer!' : 'Magen');
+    this.bars.magen.label.setColor(m.emptyStomach > 0 ? '#ff9a8a' : COLORS.cream);
 
     // Statuszeile
     const p = s.player;
     const burp = p.burpCooldown > 0 ? `Rülpsen in ${p.burpCooldown.toFixed(1).replace('.', ',')} s` : 'Rülpsen bereit (R)';
-    this.statusText.setText(`🍺 ${s.stats.drinks}   💨 ${s.stats.burps}   ·   ${burp}`);
+    const lives = '🤢'.repeat(s.vomitsLeft) + '💀'.repeat(Math.max(0, 3 - s.vomitsLeft));
+    const buffs = [p.boostTimer > 0 ? '⚡ Kick' : '', p.prostBoostTimer > 0 ? '🥂 Prost ×2' : ''].filter(Boolean).join('  ');
+    this.statusText.setText(`🍺 ${s.stats.drinks}   💨 ${s.stats.burps}   ·   ${burp}   ·   Sanka-Karte: ${lives}${buffs ? '   ·   ' + buffs : ''}`);
     this.statusText.setColor(p.burpCooldown > 0 ? '#cfd8e3' : '#8fd3ff');
 
     // Hinweise
     let alert = '';
     if (s.phase !== 'playing') alert = '';
+    else if (s.isVomiting) alert = `Reiß di zam!  ${this.game_.touch ? 'Trink-Button' : 'E'} hämmern!`;
     else if (s.isWarning) alert = 'Mir is so schlecht… iss was!';
     else if (s.controlsInverted) alert = 'Steuerung verdreht!';
     else if (p.onCarousel) alert = 'Karussell! Schnell runter!';
@@ -149,6 +157,10 @@ export class HudScene extends Phaser.Scene {
   handleEvent(e: GameEvent): void {
     if (e.type === 'hour') this.flash(`${e.hour}:00 Uhr – a Gaudi!`);
     if (e.type === 'gameEnd' && e.reason === 'zapfenstreich') this.flash('ZAPFENSTREICH!\nGeschafft!');
+    if (e.type === 'vomitSurvived') {
+      const left = e.max - e.count;
+      this.flash(`${e.cause === 'sprudel' ? 'Zu viel Sprudel!' : e.cause === 'misch' ? 'Zu wild gemischt!' : 'Des war oans z\'vui…'}\n${left === 1 ? 'Noch einmal und der Sanka kommt!' : `Noch ${left}× bis zum Sanka`}`);
+    }
     if (e.type === 'vomit') this.flash(e.cause === 'sprudel' ? 'Zu viel Sprudel!' : e.cause === 'misch' ? 'Zu wild gemischt!' : 'Des war oans z\'vui…');
   }
 

@@ -352,7 +352,12 @@ export class GameScene extends Phaser.Scene {
       pv.body.rotation = p.spin + sway + wobble;
       // Grün werden kurz vorm Kotzen (sanfter Verlauf ab 60)
       const k = Phaser.Math.Clamp((s.meters.kotz - 60) / 40, 0, 1);
-      if (k > 0) {
+      if (s.isVomiting) {
+        // Kontrollverlust: grün, würgend, zitternd
+        pv.body.setTint(0x6fe05a);
+        pv.body.rotation = Math.sin(t * 40) * 0.22;
+        pv.body.y = Math.abs(Math.sin(t * 20)) * 3;
+      } else if (k > 0) {
         const c = Phaser.Display.Color.Interpolate.ColorWithColor(
           Phaser.Display.Color.ValueToColor(0xffffff), Phaser.Display.Color.ValueToColor(0x6fe05a), 100, k * 100);
         pv.body.setTint(Phaser.Display.Color.GetColor(c.r, c.g, c.b));
@@ -558,7 +563,7 @@ export class GameScene extends Phaser.Scene {
       }
       case 'food':
         audio.play(e.food === 'wasser' ? 'gulp' : 'crunch');
-        this.floatText(e.pos.x, e.pos.y - 70, `${FOODS[e.food].name}! Kotz ${FOODS[e.food].kotz}`, COLORS.vomit, 22);
+        this.floatText(e.pos.x, e.pos.y - 70, `${FOODS[e.food].name}! Magen +${FOODS[e.food].magen}`, COLORS.vomit, 22);
         break;
       case 'burp': {
         audio.play(e.failed ? 'burpFail' : 'burp', { rate: Phaser.Math.FloatBetween(0.85, 1.2) });
@@ -600,6 +605,12 @@ export class GameScene extends Phaser.Scene {
       case 'hour':
         audio.play('clink');
         break;
+      case 'vomitSurvived':
+        this.playVomitBurst(e.count, e.max);
+        break;
+      case 'vomitRecovered':
+        this.floatText(pp.x, pp.y - 110, 'Weiter geht\'s!', '#ffffff', 26);
+        break;
       case 'vomit':
         this.playVomitSequence();
         break;
@@ -612,6 +623,23 @@ export class GameScene extends Phaser.Scene {
   // =========================================================================
   // End-Sequenzen
   // =========================================================================
+
+  /** Gekotzt, aber überlebt: kurzer Würg-Moment, das Spiel läuft weiter. */
+  private playVomitBurst(count: number, max: number): void {
+    const p = this.state.player.pos;
+    const dir = this.playerView.body.flipX ? -1 : 1;
+    audio.play('vomit', { rate: Phaser.Math.FloatBetween(0.95, 1.1) });
+    this.cameras.main.shake(350, 0.01);
+    const fx = this.add.particles(p.x + dir * 12, p.y - 36, 'drop', {
+      speedX: { min: 140 * dir, max: 360 * dir }, speedY: { min: -220, max: -60 }, gravityY: 700,
+      lifespan: 900, scale: { start: 1.2, end: 0.6 }, quantity: 4, frequency: 25,
+    }).setDepth(p.y + 1);
+    this.time.delayedCall(900, () => { fx.stop(); this.time.delayedCall(1000, () => fx.destroy()); });
+    const puddle = this.add.image(p.x + dir * 70, p.y + 6, 'puddle').setScale(0).setDepth(DEPTH.decal + 1);
+    this.tweens.add({ targets: puddle, scale: 1, duration: 900, ease: 'Sine.out' });
+    this.tweens.add({ targets: puddle, alpha: 0, delay: 14000, duration: 4000, onComplete: () => puddle.destroy() });
+    this.floatText(p.x, p.y - 120, `Gekotzt! (${count}/${max})`, COLORS.vomit, 34);
+  }
 
   private playVomitSequence(): void {
     this.ending = true;

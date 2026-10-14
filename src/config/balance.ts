@@ -28,6 +28,12 @@ export interface DrinkConfig {
   kotz: number;
   /** Zusätzlicher Mischmasch-Bonus (unabhängig von der Sorten-Vielfalt) */
   mischBonus: number;
+  /** Kotz, der erst verzögert wirkt (fließt über `METERS.delayedKotz` in die Kotzleiste) */
+  kotzDelayed?: number;
+  /** Jäger-Kick: Dauer (s) des Tempo-Boosts */
+  speedBoostSeconds?: number;
+  /** Sekt-Laune: Dauer (s), in der ein "Prost!" doppelt zählt */
+  prostBoostSeconds?: number;
   /** Relative Häufigkeit beim zufälligen Spawnen */
   spawnWeight: number;
   /** Farbe für prozedurale Grafik/Partikel (0xRRGGBB) */
@@ -35,12 +41,15 @@ export interface DrinkConfig {
 }
 
 export const DRINKS: Record<DrinkId, DrinkConfig> = {
-  mass:      { id: 'mass',      name: 'Maß Bier',     promille: 0.32, sprudel: 22, kotz: 6,  mischBonus: 0,  spawnWeight: 5, color: 0xf2b400 },
-  radler:    { id: 'radler',    name: 'Radler',       promille: 0.12, sprudel: 14, kotz: 3,  mischBonus: 0,  spawnWeight: 3, color: 0xf7dc6f },
-  weissbier: { id: 'weissbier', name: 'Weißbier',     promille: 0.22, sprudel: 24, kotz: 5,  mischBonus: 0,  spawnWeight: 3, color: 0xe59a2a },
-  obstler:   { id: 'obstler',   name: 'Obstler',      promille: 0.28, sprudel: 0,  kotz: 14, mischBonus: 0,  spawnWeight: 2, color: 0xdff3ff },
-  sekt:      { id: 'sekt',      name: 'Sekt',         promille: 0.18, sprudel: 34, kotz: 5,  mischBonus: 0,  spawnWeight: 2, color: 0xfff1b8 },
-  jaeger:    { id: 'jaeger',    name: 'Jägermeister', promille: 0.28, sprudel: 0,  kotz: 6,  mischBonus: 28, spawnWeight: 2, color: 0x5a2d0c },
+  mass:      { id: 'mass',      name: 'Maß Bier',     promille: 0.32, sprudel: 22, kotz: 6, mischBonus: 0,  spawnWeight: 5, color: 0xf2b400 },
+  radler:    { id: 'radler',    name: 'Radler',       promille: 0.12, sprudel: 14, kotz: 3, mischBonus: 0,  spawnWeight: 3, color: 0xf7dc6f },
+  weissbier: { id: 'weissbier', name: 'Weißbier',     promille: 0.22, sprudel: 24, kotz: 5, mischBonus: 0,  spawnWeight: 3, color: 0xe59a2a },
+  // Obstler: kein Sprudel, beruhigt sogar den Bauch – aber der Kotz kommt zeitverzögert
+  obstler:   { id: 'obstler',   name: 'Obstler',      promille: 0.28, sprudel: -8, kotz: 3, mischBonus: 0,  spawnWeight: 2, color: 0xdff3ff, kotzDelayed: 11 },
+  // Sekt: viel Sprudel, dafür zählt ein "Prost!" kurz doppelt
+  sekt:      { id: 'sekt',      name: 'Sekt',         promille: 0.18, sprudel: 34, kotz: 5, mischBonus: 0,  spawnWeight: 2, color: 0xfff1b8, prostBoostSeconds: 25 },
+  // Jägermeister: Mischmasch-Spike, dafür kurzer Tempo-Kick
+  jaeger:    { id: 'jaeger',    name: 'Jägermeister', promille: 0.28, sprudel: 0,  kotz: 6, mischBonus: 28, spawnWeight: 2, color: 0x5a2d0c, speedBoostSeconds: 6 },
 };
 
 // ---------------------------------------------------------------------------
@@ -52,12 +61,16 @@ export type FoodId = 'brezn' | 'hendl' | 'steckerlfisch' | 'wasser';
 export interface FoodConfig {
   id: FoodId;
   name: string;
-  /** Veränderung der Kotzleiste (negativ = gut) */
+  /** Sofortige Veränderung der Kotzleiste (negativ = gut) */
   kotz: number;
   /** Veränderung des Sprudel-Drucks */
   sprudel: number;
   /** Veränderung der Promille (Wasser: kleiner Trade-off) */
   promille: number;
+  /** Magenfüllung (0–100): Puffer, der Kotz und Alkoholaufnahme dämpft */
+  magen: number;
+  /** Veränderung des Mischmasch-Meters */
+  misch: number;
   /** Verlangsamung beim Essen: Dauer in s (0 = keine) */
   slowSeconds: number;
   /** Relative Häufigkeit als Pickup auf der Wiese */
@@ -66,10 +79,14 @@ export interface FoodConfig {
 }
 
 export const FOODS: Record<FoodId, FoodConfig> = {
-  brezn:         { id: 'brezn',         name: 'Brezn',         kotz: -15, sprudel: 0,   promille: 0,    slowSeconds: 0, spawnWeight: 4, color: 0xa0522d },
-  hendl:         { id: 'hendl',         name: 'Hendl',         kotz: -30, sprudel: 0,   promille: 0,    slowSeconds: 2, spawnWeight: 1, color: 0xd98c3a },
-  steckerlfisch: { id: 'steckerlfisch', name: 'Steckerlfisch', kotz: -25, sprudel: 0,   promille: 0,    slowSeconds: 0, spawnWeight: 1, color: 0x8fa3ad },
-  wasser:        { id: 'wasser',        name: 'Wasser',        kotz: -20, sprudel: -10, promille: -0.1, slowSeconds: 0, spawnWeight: 3, color: 0x6ec6ff },
+  // Brezn: billige Unterlage, kaum Soforthilfe
+  brezn:         { id: 'brezn',         name: 'Brezn',         kotz: -6,  sprudel: 0,   promille: 0,    magen: 28, misch: 0,   slowSeconds: 0, spawnWeight: 4, color: 0xa0522d },
+  // Hendl: füllt den Magen am stärksten, macht dafür kurz träge
+  hendl:         { id: 'hendl',         name: 'Hendl',         kotz: -12, sprudel: 0,   promille: 0,    magen: 55, misch: 0,   slowSeconds: 3, spawnWeight: 1, color: 0xd98c3a },
+  // Steckerlfisch: mittlere Unterlage und beruhigt den Mischmasch
+  steckerlfisch: { id: 'steckerlfisch', name: 'Steckerlfisch', kotz: -8,  sprudel: 0,   promille: 0,    magen: 35, misch: -35, slowSeconds: 0, spawnWeight: 1, color: 0x8fa3ad },
+  // Wasser: nur Soforthilfe gegen Kotz und Sprudel, kostet etwas Promille
+  wasser:        { id: 'wasser',        name: 'Wasser',        kotz: -16, sprudel: -22, promille: -0.1, magen: 0,  misch: 0,   slowSeconds: 0, spawnWeight: 3, color: 0x6ec6ff },
 };
 
 // ---------------------------------------------------------------------------
@@ -101,6 +118,20 @@ export const METERS = {
     passivePerPromillePerSecond: 0.45,
     /** Ab diesem Wert: Warnung (grün + wackeln + Warnsound) */
     warningThreshold: 85,
+  },
+  /** Verzögerter Kotz (Obstler): so viel fließt pro Sekunde in die Kotzleiste */
+  delayedKotz: {
+    drainPerSecond: 2,
+  },
+  /** Magenfüllung durch Essen: dämpft Kotz und Alkoholaufnahme */
+  magen: {
+    max: 100,
+    /** Verdauung pro Sekunde */
+    decayPerSecond: 0.8,
+    /** Bei voller Füllung: so viel weniger Kotz aus Getränken und Rausch (0.5 = −50 %) */
+    kotzReductionAtFull: 0.5,
+    /** Bei voller Füllung: so viel langsamer wirkt der Alkohol (0.2 = −20 % Promille pro Getränk) */
+    absorptionSlowAtFull: 0.2,
   },
   sprudel: {
     max: 100,
@@ -150,6 +181,8 @@ export const PLAYER = {
   interactRadius: 56,
   /** Geschwindigkeitsfaktor während Hendl-Verlangsamung */
   slowFactor: 0.45,
+  /** Geschwindigkeitsfaktor während Jäger-Kick */
+  boostFactor: 1.3,
 };
 
 // ---------------------------------------------------------------------------
@@ -238,12 +271,43 @@ export const EVENTS = {
 };
 
 // ---------------------------------------------------------------------------
+// Kotzen als Ereignis
+// ---------------------------------------------------------------------------
+
+export const VOMIT = {
+  /** Beim n-ten Kotzen ist Schluss (Sanka). Davor ist Kotzen "nur" ein teurer Rückschlag. */
+  maxVomits: 3,
+  /** Dauer des Kontrollverlusts (s) */
+  stunSeconds: 2.6,
+  /** Jeder Tastendruck („Reiß di zam!“) verkürzt den Kontrollverlust um so viel (s) */
+  mashShorten: 0.22,
+  /** So kurz kann der Kontrollverlust frühestens enden (s) */
+  minStunSeconds: 1.0,
+  /** Anteil der Promille, der nach dem Kotzen bleibt */
+  promilleKeep: 0.65,
+  /** Kotzleiste nach dem 1., 2. Kotzen – je öfter, desto weniger Erleichterung */
+  kotzAfter: [30, 42],
+  /** Sprudel/Mischmasch werden höchstens auf diese Werte zurückgesetzt */
+  sprudelAfterMax: 25,
+  mischAfterMax: 20,
+  /** Nachwirkung: Magen ist leer, Getränke und Rausch wirken so lange … */
+  emptyStomachSeconds: 20,
+  /** … um diesen Faktor stärker auf die Kotzleiste */
+  emptyStomachKotzFactor: 1.4,
+  /** Danach noch kurz benommen (Verlangsamung, s) */
+  dazedSeconds: 3,
+};
+
+// ---------------------------------------------------------------------------
 // Scoring & Titel
 // ---------------------------------------------------------------------------
 
 export const SCORING = {
-  /** Wer kotzt, bekommt nur diesen Anteil seiner Promille als Score */
+  /** Wer vom Sanka abgeholt wird, bekommt nur diesen Anteil seiner Promille als Score */
   vomitScoreFactor: 0.5,
+  /** Jedes überstandene Kotzen kostet diesen Anteil am Score (nicht unter `minVomitFactor`) */
+  perVomitPenalty: 0.12,
+  minVomitFactor: 0.45,
   /** Titel je nach Score (aufsteigend, erster passender gewinnt) */
   titles: [
     { maxScore: 1.0, title: 'Radler-Rookie' },
@@ -263,6 +327,8 @@ export const LINES = {
   food: ['Des geht no!', 'Mei, is des guad!', 'A Brotzeit muass sei!'],
   drunk: ['I bin ned bsoffn!', 'Wo is mei Hut?', 'Heid geh i ned hoam!', 'Des Zelt dreht si…'],
   sick: ['Mir is a bissl schlecht…', 'Uff…', 'Ned guad…'],
+  vomit: ['*BLEEEH*', 'Uuuargh…', 'Do geht nix mehr…'],
+  recover: ['Jetzt geht\'s wieder.', 'Des hat guad do…', 'Oans geht no!'],
   burp: ['*BÖÖRP*', '*Rülps*', 'Tschuldigung!'],
   burpFail: ['Uuups…', 'Des war knapp…'],
   npc: [

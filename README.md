@@ -21,12 +21,14 @@ Gebaut mit **Vite + TypeScript + Phaser 3 + Howler.js**. Das Ergebnis ist eine s
 ## Spielmechanik in Kürze
 
 - **Promille** = Score. Steigt mit Alkohol, sinkt langsam.
-- **Kotzleiste** (0–100): bei 100 ist Schluss. Steigt passiv mit dem Rausch, durch Getränke, Karussell und Autoscooter.
+- **Kotzleiste** (0–100): bei 100 wird gekotzt. Steigt passiv mit dem Rausch, durch Getränke, Karussell und Autoscooter.
 - **Sprudel-Druck** (0–100): Kohlensäure. Über 80 steigt die Kotzleiste pro Sekunde, bei 100 kotzt man sofort. Rülpsen hilft.
 - **Mischmasch-Meter** (0–100): verschiedene Sorten innerhalb von 30 s. Ab 50 steigt die Kotzleiste doppelt so schnell, bei 100 kotzt man sofort.
-- **Gegenmittel**: Brezn, Hendl (macht kurz langsam), Steckerlfisch an den Buden; Wasser als Pickup.
+- **Magen** (0–100): Essen füllt den Magen. Ein voller Magen dämpft Kotz (bis −50 %) und Alkoholaufnahme (bis −20 %), wird aber verdaut. Essen *vorher* lohnt sich mehr als Essen *hinterher*.
+- **Kotzen ist ein Rückschlag, kein Ende**: Beim Kotzen verliert man ~35 % der Promille, die Kotzleiste fällt auf 30 (beim 2. Mal 42), der Magen ist leer (20 s lang wirkt Kotz stärker), und man ist ~2,6 s handlungsunfähig. Wer **E hämmert**, verkürzt das (min. 1 s). Beim **3. Mal** kommt der Sanka. Jedes überstandene Kotzen kostet 12 % Score, der Sanka halbiert ihn.
+- **Getränke haben Rollen**: Maß = solide Basis, Radler = mild, Weißbier/Sekt = viel Sprudel, **Obstler** = Sprudel runter, aber der Kotz kommt verzögert, **Sekt** = „Prost!“ zählt 25 s lang doppelt, **Jägermeister** = Mischmasch-Spike, dafür 6 s Tempo-Kick.
+- **Essen hat Rollen**: Brezn = billige Unterlage, **Hendl** = größte Magenfüllung (macht kurz träge), **Steckerlfisch** = Unterlage + baut Mischmasch ab, **Wasser** = Soforthilfe gegen Kotz und Sprudel, kostet etwas Promille.
 - **Gags**: Karussell dreht dich (und deinen Magen), ab 1,5 ‰ driftet die Steuerung, ab 2,5 ‰ ist sie gelegentlich vertauscht, Bildschirmwackeln und Doppeltsehen, „Prost!“-Events, Sprechblasen, Sanka-Abholung.
-- Wer kotzt, bekommt nur **50 %** seiner Promille als Score (`SCORING.vomitScoreFactor`).
 
 ---
 

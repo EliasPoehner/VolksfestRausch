@@ -15,7 +15,7 @@
  * Der Renderer darf den Zustand LESEN, aber nicht verändern.
  */
 import {
-  BURP, DRINKS, DRUNK, EVENTS, FOODS, HAZARDS, LINES, PLAYER, ROUND, SPAWNS,
+  BURP, DRINKS, DRUNK, EVENTS, FOODS, HAZARDS, LINES, PLAYER, ROUND, SPAWNS, VOMIT,
   type DrinkId, type FoodId,
 } from '../config/balance';
 import {
@@ -26,7 +26,7 @@ import {
   PLAYER_ID, type BenchSlot, type Booth, type BumperCar, type GameResult, type GameStats,
   type InteractionFocus, type Npc, type Pickup, type Player, type ProstState,
 } from './entities';
-import { EventQueue } from './events';
+import { EventQueue, type VomitCause } from './events';
 import {
   Rng, clamp, clampLength1, dist, normalize, pointInRect, pushCircleOutOfCircle, pushCircleOutOfRect,
   type Rect, type Vec2,
@@ -76,7 +76,7 @@ export class GameState {
   /** Aktueller Drift-Vektor (für Debug/Renderer, z. B. Schwank-Animation) */
   drift: Vec2 = { x: 0, y: 0 };
 
-  readonly stats: GameStats = { drinks: 0, foods: 0, burps: 0, failedBurps: 0, prosts: 0, maxPromille: 0 };
+  readonly stats: GameStats = { drinks: 0, foods: 0, burps: 0, failedBurps: 0, prosts: 0, maxPromille: 0, vomits: 0 };
 
   private nextId = 1;
   private fieldSpawnTimer = 0;
@@ -90,6 +90,7 @@ export class GameState {
     this.player = {
       id: PLAYER_ID, pos: { ...PLAYER_START }, vel: { x: 0, y: 0 }, facing: -Math.PI / 2,
       slowTimer: 0, invertTimer: 0, onCarousel: false, spin: 0, burpCooldown: 0,
+      boostTimer: 0, prostBoostTimer: 0, vomitTimer: 0, vomitElapsed: 0,
     };
     this.nextProstIn = this.rng.range(EVENTS.prost.minInterval * 0.5, EVENTS.prost.maxInterval * 0.6);
     this.buildWorld();
@@ -193,6 +194,10 @@ export class GameState {
   get isWarning(): boolean { return this.meters.isWarning && this.phase === 'playing'; }
   get burpReady(): boolean { return this.player.burpCooldown <= 0; }
   get controlsInverted(): boolean { return this.player.invertTimer > 0; }
+  /** Kontrollverlust nach dem Kotzen */
+  get isVomiting(): boolean { return this.player.vomitTimer > 0; }
+  /** Wie oft man noch kotzen darf, bevor der Sanka kommt (inkl. dem letzten, tödlichen Mal) */
+  get vomitsLeft(): number { return Math.max(0, VOMIT.maxVomits - this.stats.vomits); }
 
   findNpc(id: number): Npc | undefined { return this.npcs.find((n) => n.id === id); }
 
@@ -226,6 +231,17 @@ export class GameState {
     p.burpCooldown = Math.max(0, p.burpCooldown - dt);
     p.slowTimer = Math.max(0, p.slowTimer - dt);
     p.invertTimer = Math.max(0, p.invertTimer - dt);
+    p.boostTimer = Math.max(0, p.boostTimer - dt);
+    p.prostBoostTimer = Math.max(0, p.prostBoostTimer - dt);
+
+    // Kontrollverlust nach dem Kotzen: kein Laufen, Tasten hämmern verkürzt ihn
+    if (p.vomitTimer > 0) {
+      p.vomitElapsed += dt;
+      p.vomitTimer = Math.max(0, p.vomitTimer - dt);
+      p.vel = { x: 0, y: 0 };
+      if (p.vomitTimer <= 0) this.endVomitStun();
+      return;
+    }
 
     let move = clampLength1(cmd.move);
 
@@ -249,7 +265,7 @@ export class GameState {
     const driftScale = moving ? 1 : 0.3;
     const dir = { x: move.x + this.drift.x * driftScale, y: move.y + this.drift.y * driftScale };
 
-    const speed = PLAYER.speed * (p.slowTimer > 0 ? PLAYER.slowFactor : 1);
+    const speed = PLAYER.speed * (p.slowTimer > 0 ? PLAYER.slowFactor : 1) * (p.boostTimer > 0 ? PLAYER.boostFactor : 1);
     p.vel = { x: dir.x * speed, y: dir.y * speed };
     p.pos.x += p.vel.x * dt;
     p.pos.y += p.vel.y * dt;
@@ -491,6 +507,7 @@ export class GameState {
   private updateFocus(): void {
     const pp = this.player.pos;
     let best: InteractionFocus | null = null;
+    if (this.isVomiting) { this.focus = null; return; }
     let bestD = PLAYER.interactRadius;
 
     if (this.prost.active) {
@@ -526,12 +543,23 @@ export class GameState {
   }
 
   private handleActions(cmd: PlayerCommand): void {
+    // Beim Kotzen: Aktion = "Reiß di zam!" (verkürzt den Kontrollverlust), sonst nichts
+    if (this.isVomiting) {
+      if (cmd.action) {
+        const p = this.player;
+        const floor = Math.max(0, VOMIT.minStunSeconds - p.vomitElapsed);
+        p.vomitTimer = Math.max(p.vomitTimer - VOMIT.mashShorten, floor);
+        if (p.vomitTimer <= 0) this.endVomitStun();
+      }
+      return;
+    }
     if (cmd.burp) this.tryBurp();
     if (!cmd.action) return;
 
     // "Prost!" hat Vorrang
     if (this.prost.active) {
-      this.meters.prost(EVENTS.prost.bonusPromille, EVENTS.prost.sprudel, EVENTS.prost.kotz);
+      const boost = this.player.prostBoostTimer > 0 ? 2 : 1;
+      this.meters.prost(EVENTS.prost.bonusPromille * boost, EVENTS.prost.sprudel, EVENTS.prost.kotz);
       this.stats.prosts++;
       this.stats.drinks++;
       this.prost = { active: false, npcId: -1, timeLeft: 0 };
@@ -574,6 +602,9 @@ export class GameState {
 
   private consumeDrink(id: DrinkId): void {
     this.meters.drink(id, this.elapsed);
+    const d = DRINKS[id];
+    if (d.speedBoostSeconds) this.player.boostTimer = d.speedBoostSeconds;
+    if (d.prostBoostSeconds) this.player.prostBoostTimer = d.prostBoostSeconds;
     this.stats.drinks++;
     this.events.push({ type: 'drink', drink: id, pos: { ...this.player.pos }, viaProst: false });
     if (this.rng.chance(0.45)) this.say(PLAYER_ID, this.rng.pick(LINES.drink));
@@ -610,6 +641,7 @@ export class GameState {
       }
       return;
     }
+    if (this.isVomiting) return;
     this.nextProstIn -= dt;
     if (this.nextProstIn > 0) return;
     this.nextProstIn = this.rng.range(EVENTS.prost.minInterval, EVENTS.prost.maxInterval);
@@ -663,11 +695,36 @@ export class GameState {
   private checkEnd(): void {
     const cause = this.meters.checkVomit();
     if (cause) {
-      this.events.push({ type: 'vomit', cause, pos: { ...this.player.pos } });
-      this.finish('vomit', cause);
-      return;
+      this.stats.vomits++;
+      if (this.stats.vomits >= VOMIT.maxVomits) {
+        this.events.push({ type: 'vomit', cause, pos: { ...this.player.pos } });
+        this.finish('vomit', cause);
+        return;
+      }
+      this.startVomitStun(cause);
     }
     if (this.elapsed >= ROUND.durationSeconds) this.finish('zapfenstreich');
+  }
+
+  /** Gekotzt, aber noch nicht abgeholt: Erleichterung, Verlust und kurzer Kontrollverlust. */
+  private startVomitStun(cause: VomitCause): void {
+    const p = this.player;
+    this.meters.relieveAfterVomit(this.stats.vomits);
+    p.vomitTimer = VOMIT.stunSeconds;
+    p.vomitElapsed = 0;
+    p.boostTimer = 0;
+    p.prostBoostTimer = 0;
+    p.slowTimer = 0;
+    p.invertTimer = 0;
+    this.prost = { active: false, npcId: -1, timeLeft: 0 };
+    this.events.push({ type: 'vomitSurvived', cause, pos: { ...p.pos }, count: this.stats.vomits, max: VOMIT.maxVomits });
+    this.say(PLAYER_ID, this.rng.pick(LINES.vomit));
+  }
+
+  private endVomitStun(): void {
+    this.player.slowTimer = Math.max(this.player.slowTimer, VOMIT.dazedSeconds);
+    this.events.push({ type: 'vomitRecovered' });
+    this.say(PLAYER_ID, this.rng.pick(LINES.recover));
   }
 
   private finish(reason: GameResult['reason'], cause?: GameResult['cause']): void {
@@ -676,7 +733,8 @@ export class GameState {
     this.prost.active = false;
     this.focus = null;
     const vomited = reason === 'vomit';
-    const score = computeScore(this.meters.promille, vomited);
+    const survived = vomited ? Math.max(0, this.stats.vomits - 1) : this.stats.vomits;
+    const score = computeScore(this.meters.promille, vomited, survived);
     this.result = {
       reason, cause, promille: this.meters.promille, score,
       title: titleFor(score, vomited), clock: this.clock, stats: { ...this.stats },

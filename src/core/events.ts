@@ -27,6 +27,11 @@ export type GameEvent =
   | { type: 'controlsInverted' }
   | { type: 'confetti'; pos: Vec2 }
   | { type: 'hour'; hour: number }
+  /** Gekotzt, aber überstanden – das Spiel läuft weiter. `count` = wievielte Kotzerei, `max` = Sanka-Grenze */
+  | { type: 'vomitSurvived'; cause: VomitCause; pos: Vec2; count: number; max: number }
+  /** Das Stunden-Ende des Kontrollverlusts */
+  | { type: 'vomitRecovered' }
+  /** Letztes Kotzen: der Sanka kommt */
   | { type: 'vomit'; cause: VomitCause; pos: Vec2 }
   | { type: 'gameEnd'; reason: EndReason };
 

@@ -26,6 +26,14 @@ export interface Player {
   spin: number;
   /** Rülps-Cooldown (s) */
   burpCooldown: number;
+  /** Jäger-Kick: verbleibende Tempo-Boost-Dauer (s) */
+  boostTimer: number;
+  /** Sekt-Laune: ein "Prost!" zählt doppelt, solange > 0 (s) */
+  prostBoostTimer: number;
+  /** > 0: Kontrollverlust nach dem Kotzen (s) */
+  vomitTimer: number;
+  /** Zeit seit Beginn des Kontrollverlusts (s) */
+  vomitElapsed: number;
 }
 
 export type PickupKind = 'drink' | 'food';
@@ -113,6 +121,8 @@ export interface GameStats {
   failedBurps: number;
   prosts: number;
   maxPromille: number;
+  /** Wie oft gekotzt wurde (inkl. dem letzten, falls der Sanka kam) */
+  vomits: number;
 }
 
 export interface GameResult {

@@ -3,9 +3,14 @@
  */
 import { ROUND, SCORING } from '../config/balance';
 
-/** Score aus Promille berechnen (Kotzen kostet einen Anteil). */
-export function computeScore(promille: number, vomited: boolean): number {
-  const raw = vomited ? promille * SCORING.vomitScoreFactor : promille;
+/**
+ * Score aus Promille berechnen.
+ * @param vomited vom Sanka abgeholt worden (halbiert den Score)
+ * @param survivedVomits wie oft gekotzt, aber überstanden (jedes Mal ein Abzug)
+ */
+export function computeScore(promille: number, vomited: boolean, survivedVomits = 0): number {
+  const penalty = Math.max(SCORING.minVomitFactor, 1 - SCORING.perVomitPenalty * survivedVomits);
+  const raw = promille * penalty * (vomited ? SCORING.vomitScoreFactor : 1);
   return Math.round(raw * 100) / 100;
 }
 
