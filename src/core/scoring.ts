@@ -1,11 +1,18 @@
 /**
  * Scoring & Uhr – reine Funktionen.
  */
-import { ROUND, SCORING } from '../config/balance';
+import { ROUND, SCORING, SIDE_GOALS } from '../config/balance';
 
-/** Score aus Promille berechnen (Kotzen kostet einen Anteil). */
-export function computeScore(promille: number, vomited: boolean): number {
-  const raw = vomited ? promille * SCORING.vomitScoreFactor : promille;
+/**
+ * Score aus Promille berechnen.
+ * @param vomited vom Sanka abgeholt worden (halbiert den Score)
+ * @param survivedVomits wie oft gekotzt, aber überstanden (jedes Mal ein Abzug)
+ * @param goalsDone erfüllte Wiesn-Aufgaben (jede gibt einen Bonus)
+ */
+export function computeScore(promille: number, vomited: boolean, survivedVomits = 0, goalsDone = 0): number {
+  const penalty = Math.max(SCORING.minVomitFactor, 1 - SCORING.perVomitPenalty * survivedVomits);
+  const bonus = 1 + SIDE_GOALS.bonusEach * goalsDone;
+  const raw = promille * penalty * bonus * (vomited ? SCORING.vomitScoreFactor : 1);
   return Math.round(raw * 100) / 100;
 }
 

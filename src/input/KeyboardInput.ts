@@ -1,5 +1,5 @@
 /**
- * Tastatur-Eingabe über DOM-Events (WASD/Pfeile, E/Leertaste, R).
+ * Tastatur-Eingabe über DOM-Events (WASD/Pfeile, E/Leertaste, R halten zum Rülpsen).
  */
 import type { Vec2 } from '../core/math';
 import type { InputSource } from './InputManager';
@@ -34,6 +34,7 @@ export class KeyboardInput implements InputSource {
   }
 
   private any(codes: string[]): boolean { return codes.some((c) => this.down.has(c)); }
+  private burpDown(): boolean { return this.any(BURP); }
 
   getMove(): Vec2 {
     const x = (this.any(RIGHT) ? 1 : 0) - (this.any(LEFT) ? 1 : 0);
@@ -41,8 +42,8 @@ export class KeyboardInput implements InputSource {
     return { x, y };
   }
 
-  consumeActions(): { action: boolean; burp: boolean } {
-    const r = { action: this.action, burp: this.burp };
+  consumeActions(): { action: boolean; burpHeld: boolean } {
+    const r = { action: this.action, burpHeld: this.burp || this.burpDown() };
     this.action = false;
     this.burp = false;
     return r;

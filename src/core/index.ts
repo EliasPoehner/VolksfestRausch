@@ -8,3 +8,4 @@ export * from './events';
 export * from './math';
 export * from './Meters';
 export * from './scoring';
+export * from './meta';

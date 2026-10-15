@@ -4,7 +4,7 @@
  * Liefert pro Logik-Schritt einen `PlayerCommand`:
  *   - move:   Richtungsvektor (Länge 0..1)
  *   - action: E/Leertaste/Touch "Trinken" wurde gedrückt (Flanke)
- *   - burp:   R/Touch "Rülpsen" wurde gedrückt (Flanke)
+ *   - burpHeld: R/Touch "Rülpsen" ist gedrückt (Halten lädt auf, Loslassen rülpst)
  *
  * Quellen werden zusammengeführt (Tastatur + Touch gleichzeitig möglich).
  * Weil hier nur DOM-Events genutzt werden, funktioniert das Modul
@@ -16,8 +16,12 @@ import { clampLength1, type Vec2 } from '../core/math';
 export interface InputSource {
   /** Aktuelle Richtung (Länge 0..1) */
   getMove(): Vec2;
-  /** Gibt gedrückte Aktionen seit dem letzten Aufruf zurück und setzt sie zurück */
-  consumeActions(): { action: boolean; burp: boolean };
+  /**
+   * Gibt gedrückte Aktionen seit dem letzten Aufruf zurück und setzt sie zurück.
+   * `burpHeld` ist true, solange Rülpsen gehalten wird – oder wenn es seit dem letzten
+   * Aufruf kurz angetippt wurde (damit auch ganz kurze Tipper ankommen).
+   */
+  consumeActions(): { action: boolean; burpHeld: boolean };
   destroy(): void;
 }
 
@@ -34,15 +38,15 @@ export class InputManager {
    * Aktionen werden dabei "verbraucht", damit ein Tastendruck nur einmal zählt.
    */
   poll(): PlayerCommand {
-    let x = 0, y = 0, action = false, burp = false;
+    let x = 0, y = 0, action = false, burpHeld = false;
     for (const s of this.sources) {
       const m = s.getMove();
       x += m.x; y += m.y;
       const a = s.consumeActions();
       action ||= a.action;
-      burp ||= a.burp;
+      burpHeld ||= a.burpHeld;
     }
-    return { move: clampLength1({ x, y }), action, burp };
+    return { move: clampLength1({ x, y }), action, burpHeld };
   }
 
   /** Nur die Flanken verwerfen (z. B. beim Pausieren) */

@@ -19,6 +19,7 @@ export class TouchInput implements InputSource {
   private move: Vec2 = { x: 0, y: 0 };
   private action = false;
   private burp = false;
+  private burpPointer: number | null = null;
   private joyPointer: number | null = null;
   private center: Vec2 = { x: 0, y: 0 };
   private readonly maxRadius = 50;
@@ -30,7 +31,7 @@ export class TouchInput implements InputSource {
     this.root.innerHTML = `
       <div class="joy-zone"><div class="joy-base"><div class="joy-knob"></div></div></div>
       <div class="btn-zone">
-        <button class="tbtn tbtn-burp" aria-label="Rülpsen">💨<span>Rülpsen</span></button>
+        <button class="tbtn tbtn-burp" aria-label="Rülpsen (halten)">💨<span>Halten</span></button>
         <button class="tbtn tbtn-action" aria-label="Trinken / Essen">🍺<span>Trinken</span></button>
       </div>`;
     container.appendChild(this.root);
@@ -48,7 +49,13 @@ export class TouchInput implements InputSource {
 
     const press = (fn: () => void) => (e: Event) => { e.preventDefault(); e.stopPropagation(); fn(); };
     actionBtn.addEventListener('pointerdown', press(() => { this.action = true; }));
-    this.burpBtn.addEventListener('pointerdown', press(() => { this.burp = true; }));
+    // Rülpsen: halten zum Aufladen, loslassen zum Rülpsen
+    this.burpBtn.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      this.burp = true;
+      this.burpPointer = e.pointerId;
+      this.burpBtn.classList.add('charging');
+    });
   }
 
   /** Zeigt dem Spieler, ob Rülpsen bereit ist (vom Renderer aufgerufen). */
@@ -58,7 +65,11 @@ export class TouchInput implements InputSource {
 
   setVisible(v: boolean): void {
     this.root.style.display = v ? '' : 'none';
-    if (!v) this.reset();
+    if (!v) {
+      this.reset();
+      this.burpPointer = null;
+      this.burpBtn.classList.remove('charging');
+    }
   }
 
   private onDown = (e: PointerEvent): void => {
@@ -75,7 +86,13 @@ export class TouchInput implements InputSource {
 
   private onUp = (e: PointerEvent): void => {
     if (e.pointerId === this.joyPointer) this.reset();
+    if (e.pointerId === this.burpPointer) {
+      this.burpPointer = null;
+      this.burpBtn.classList.remove('charging');
+    }
   };
+
+  private burpDown(): boolean { return this.burpPointer !== null; }
 
   private update(e: PointerEvent): void {
     let dx = e.clientX - this.center.x;
@@ -96,8 +113,8 @@ export class TouchInput implements InputSource {
 
   getMove(): Vec2 { return this.move; }
 
-  consumeActions(): { action: boolean; burp: boolean } {
-    const r = { action: this.action, burp: this.burp };
+  consumeActions(): { action: boolean; burpHeld: boolean } {
+    const r = { action: this.action, burpHeld: this.burp || this.burpDown() };
     this.action = false;
     this.burp = false;
     return r;

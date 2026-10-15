@@ -9,11 +9,11 @@
  * Für eine Three.js-Version wird genau diese Datei (plus HudScene) ersetzt.
  */
 import Phaser from 'phaser';
-import { DRINKS, DRUNK, FOODS, ROUND } from '../../config/balance';
+import { ATTRACTIONS, BURP, DRUNK, EVENTS, FOODS, ROUND } from '../../config/balance';
 import {
-  BENCHES, BUMPER_ARENA, CAROUSEL, LIGHT_STRINGS, PATHS, TENT, WORLD,
+  BENCHES, BUMPER_ARENA, CAROUSEL, LIGHT_STRINGS, LUKAS, PATHS, RIESENRAD, TENT, WORLD,
 } from '../../config/world';
-import { GameState, NO_COMMAND, PLAYER_ID, type GameEvent, type Npc, type Pickup } from '../../core';
+import { GameState, NO_COMMAND, PLAYER_ID, freeSetup, type GameEvent, type Npc, type Pickup, type RunSetup } from '../../core';
 import { InputManager } from '../../input/InputManager';
 import { KeyboardInput } from '../../input/KeyboardInput';
 import { TouchInput, isTouchDevice } from '../../input/TouchInput';
@@ -56,11 +56,21 @@ export class GameScene extends Phaser.Scene {
   private boothViews = new Map<number, { goods: Phaser.GameObjects.Image[]; soldOut: Phaser.GameObjects.Text }>();
   private carousel!: Phaser.GameObjects.Image;
   private carouselCrown!: Phaser.GameObjects.Image;
+  private wheel!: Phaser.GameObjects.Image;
+  private gondolas: Phaser.GameObjects.Image[] = [];
+  private wheelAngle = 0;
+  private lukasPuck!: Phaser.GameObjects.Image;
+  private lukasPuckTween: Phaser.Tweens.Tween | null = null;
+  private dixiSigns = new Map<number, Phaser.GameObjects.Text>();
+  private attractionSigns = new Map<number, Phaser.GameObjects.Text>();
+  private heartIcon!: Phaser.GameObjects.Image;
   private bubbles: Bubble[] = [];
   private focusArrow!: Phaser.GameObjects.Image;
   private focusLabel!: Phaser.GameObjects.Text;
   private prostMark!: Phaser.GameObjects.Text;
+  private duelMark!: Phaser.GameObjects.Text;
   private prostRing!: Phaser.GameObjects.Graphics;
+  private burpMeter!: Phaser.GameObjects.Graphics;
   private night!: Phaser.GameObjects.Rectangle;
   private bulbs: { img: Phaser.GameObjects.Image; phase: number }[] = [];
   private ghostCam!: Phaser.Cameras.Scene2D.Camera;
@@ -72,10 +82,16 @@ export class GameScene extends Phaser.Scene {
   private burpFx!: Phaser.GameObjects.Particles.ParticleEmitter;
   private confettiFx!: Phaser.GameObjects.Particles.ParticleEmitter;
 
+  private setup: RunSetup | null = null;
+
   constructor() { super('Game'); }
 
+  init(data: { setup?: RunSetup }): void {
+    this.setup = data?.setup ?? null;
+  }
+
   create(): void {
-    this.state = new GameState();
+    this.state = new GameState(this.setup ?? freeSetup(Date.now() >>> 0));
     this.acc = 0;
     this.time0 = 0;
     this.paused = false;
@@ -95,6 +111,7 @@ export class GameScene extends Phaser.Scene {
     // Nur im Dev-Server: Zugriff für Debugging/Tests über die Browser-Konsole
     if (import.meta.env.DEV) (window as unknown as { __masskrug: GameScene }).__masskrug = this;
     this.cameras.main.fadeIn(300, 0, 0, 0);
+    audio.setMusicVolume(this.state.evening.musicVolume, 0);
     audio.startMusic();
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -186,6 +203,52 @@ export class GameScene extends Phaser.Scene {
       else g.fillRect(a.x - 8, a.y + a.h - (t - 2 * a.w - a.h) - 20, 8, 20);
     }
     this.add.text(a.x + a.w / 2, a.y - 34, 'AUTOSCOOTER', textStyle(30, '#8fd3ff')).setOrigin(0.5).setDepth(a.y);
+
+    // Dixi-Klos
+    for (const d of this.state.dixis) {
+      this.add.image(d.rect.x + d.rect.w / 2, d.rect.y + d.rect.h, 'dixi').setOrigin(0.5, 1).setDepth(d.rect.y + d.rect.h);
+      this.dixiSigns.set(d.id, this.add.text(d.rect.x + d.rect.w / 2, d.rect.y - 26, 'Frei', textStyle(15, '#8cff7a'))
+        .setOrigin(0.5).setDepth(d.rect.y + d.rect.h + 1));
+    }
+    const dx = this.state.dixis;
+    if (dx.length) {
+      this.add.text((dx[0].rect.x + dx[dx.length - 1].rect.x + dx[0].rect.w) / 2, dx[0].rect.y - 52, 'DIXI', textStyle(26, '#8fd3ff'))
+        .setOrigin(0.5).setDepth(dx[0].rect.y);
+    }
+
+    // Riesenrad
+    const rr = RIESENRAD;
+    const baseY = rr.base.y + rr.base.h;
+    this.wheel = this.add.image(rr.wheel.x, rr.wheel.y, 'riesenrad_wheel').setDepth(baseY - 2)
+      .setDisplaySize(rr.wheel.r * 2 + 20, rr.wheel.r * 2 + 20);
+    this.add.image(rr.wheel.x, baseY, 'riesenrad_stand').setOrigin(0.5, 1).setDepth(baseY - 1)
+      .setDisplaySize(300, baseY - rr.wheel.y + 30);
+    for (let i = 0; i < 8; i++) this.gondolas.push(this.add.image(0, 0, 'gondola').setOrigin(0.5, 0).setDepth(baseY));
+    this.add.text(rr.wheel.x, rr.wheel.y - rr.wheel.r - 40, 'RIESENRAD', textStyle(28, '#ff8ad8')).setOrigin(0.5).setDepth(baseY);
+
+    // Hau-den-Lukas
+    const lk = LUKAS.rect;
+    const lukasBottom = lk.y + lk.h;
+    this.add.image(lk.x + lk.w / 2, lukasBottom, 'lukas').setOrigin(0.5, 1).setDepth(lukasBottom);
+    this.lukasPuck = this.add.image(lk.x + lk.w / 2, lukasBottom - 40, 'lukas_puck').setDepth(lukasBottom + 1);
+    this.add.text(lk.x + lk.w / 2, lukasBottom - 300, 'HAU DEN LUKAS', textStyle(22, COLORS.gold)).setOrigin(0.5).setDepth(lukasBottom);
+    for (const at of this.state.attractions) {
+      const y = at.kind === 'riesenrad' ? at.spot.y + 34 : at.spot.y + 30;
+      this.attractionSigns.set(at.id, this.add.text(at.spot.x, y, '', textStyle(15, '#cfd8e3')).setOrigin(0.5).setDepth(at.spot.y + 40));
+    }
+  }
+
+  /** Höhe (px über dem Boden) des Lukas-Pucks für eine Kraft 0–1 */
+  private lukasPuckY(power: number): number {
+    const bottom = LUKAS.rect.y + LUKAS.rect.h;
+    return bottom - 40 - power * 200;
+  }
+
+  /** Position einer Gondel (i von n) bei Radwinkel `a` */
+  private gondolaPos(i: number, n: number, a: number): { x: number; y: number } {
+    const ang = a + (i / n) * Math.PI * 2;
+    const r = RIESENRAD.wheel.r;
+    return { x: RIESENRAD.wheel.x + Math.cos(ang) * r, y: RIESENRAD.wheel.y + Math.sin(ang) * r };
   }
 
   private buildLights(): void {
@@ -219,6 +282,15 @@ export class GameScene extends Phaser.Scene {
     const { width, height } = this.scale.gameSize;
     this.night = this.add.rectangle(width / 2, height / 2, width * 2, height * 2, 0x0b1640, 0)
       .setScrollFactor(0).setDepth(DEPTH.night);
+    // Wetter: Regen grau-blau mit Tropfen, Hitzewelle warm
+    const mod = this.state.setup.modifier;
+    this.add.rectangle(width / 2, height / 2, width * 2, height * 2,
+      mod === 'regen' ? 0x40506a : 0xff9a3c, mod === 'regen' ? 0.18 : mod === 'hitzewelle' ? 0.1 : 0)
+      .setScrollFactor(0).setDepth(DEPTH.night - 1);
+    if (mod === 'regen') this.add.particles(0, 0, 'px', {
+      x: { min: -100, max: width + 100 }, y: -20, lifespan: 900, speedY: { min: 700, max: 900 }, speedX: -120,
+      scaleX: 0.5, scaleY: { min: 5, max: 9 }, alpha: { start: 0.55, end: 0.2 }, tint: 0xbfd6ff, frequency: 8, quantity: 3,
+    }).setScrollFactor(0).setDepth(DEPTH.lights + 2);
   }
 
   private makeFigure(texture: TextureKey, x: number, y: number): FigureView {
@@ -239,16 +311,21 @@ export class GameScene extends Phaser.Scene {
     this.playerView.root.addAt(this.playerRing, 0);
     this.slowIcon = this.add.image(0, -78, 'food_hendl').setVisible(false);
     this.playerView.root.add(this.slowIcon);
+    this.heartIcon = this.add.image(-26, -60, 'heart').setScale(0.7).setVisible(false);
+    this.playerView.root.add(this.heartIcon);
 
     this.focusArrow = this.add.image(0, 0, 'arrow').setDepth(DEPTH.ui).setVisible(false);
     this.focusLabel = this.add.text(0, 0, '', textStyle(20)).setOrigin(0.5, 1).setDepth(DEPTH.ui).setVisible(false);
     this.prostMark = this.add.text(0, 0, 'PROST!', textStyle(36, COLORS.gold, { strokeThickness: 7 })).setOrigin(0.5, 1).setDepth(DEPTH.ui).setVisible(false);
+    this.duelMark = this.add.text(0, 0, 'DUELL!', textStyle(32, '#8fd3ff', { strokeThickness: 7 })).setOrigin(0.5, 1).setDepth(DEPTH.ui).setVisible(false);
     this.prostRing = this.add.graphics().setDepth(DEPTH.ui);
+    this.burpMeter = this.add.graphics().setDepth(DEPTH.ui);
   }
 
   private addNpcView(n: Npc): void {
-    const key: TextureKey = n.role === 'waitress' ? 'waitress' : `visitor_${n.variant}`;
+    const key: TextureKey = n.role === 'waitress' ? 'waitress' : n.role === 'security' ? 'security' : `visitor_${n.variant}`;
     const v = this.makeFigure(key, n.pos.x, n.pos.y);
+    if (n.followId !== null) v.root.setScale(0.68); // Kind
     if (n.role === 'waitress') {
       v.carry = this.add.image(16, -48, 'drink_mass').setScale(0.9);
       v.root.add(v.carry);
@@ -352,13 +429,50 @@ export class GameScene extends Phaser.Scene {
       pv.body.rotation = p.spin + sway + wobble;
       // Grün werden kurz vorm Kotzen (sanfter Verlauf ab 60)
       const k = Phaser.Math.Clamp((s.meters.kotz - 60) / 40, 0, 1);
-      if (k > 0) {
+      if (s.isVomiting) {
+        // Kontrollverlust: grün, würgend, zitternd
+        pv.body.setTint(0x6fe05a);
+        pv.body.rotation = Math.sin(t * 40) * 0.22;
+        pv.body.y = Math.abs(Math.sin(t * 20)) * 3;
+      } else if (k > 0) {
         const c = Phaser.Display.Color.Interpolate.ColorWithColor(
           Phaser.Display.Color.ValueToColor(0xffffff), Phaser.Display.Color.ValueToColor(0x6fe05a), 100, k * 100);
         pv.body.setTint(Phaser.Display.Color.GetColor(c.r, c.g, c.b));
       } else pv.body.clearTint();
       this.slowIcon.setVisible(p.slowTimer > 0).setAngle(Math.sin(t * 10) * 15);
+      this.heartIcon.setVisible(p.lebkuchenherz).setScale(0.7 + Math.sin(t * 5) * 0.05);
       this.playerRing.setAlpha(0.6 + Math.sin(t * 4) * 0.3);
+    }
+
+    // --- Riesenrad, Lukas, Dixi ---
+    this.wheelAngle += dt * 0.25;
+    this.wheel.rotation = this.wheelAngle;
+    this.gondolas.forEach((gd, i) => {
+      const gp = this.gondolaPos(i, this.gondolas.length, this.wheelAngle);
+      gd.setPosition(gp.x, gp.y);
+    });
+    const act = p.activity;
+    if (act?.kind === 'riesenrad') {
+      // Spieler fährt einmal rundherum: Start unten beim Einstieg
+      const progress = Math.min(1, act.elapsed / act.total);
+      const gp = this.gondolaPos(0, 1, Math.PI / 2 + progress * Math.PI * 2);
+      pv.root.setPosition(gp.x, gp.y + 28).setDepth(RIESENRAD.base.y + RIESENRAD.base.h + 2);
+      pv.body.rotation = 0;
+    }
+    pv.root.setAlpha(act?.kind === 'dixi' && act.elapsed >= act.queue ? 0 : 1);
+    if (act?.kind === 'lukas') {
+      this.lukasPuckTween?.stop();
+      this.lukasPuckTween = null;
+      this.lukasPuck.y = this.lukasPuckY(s.lukasPower);
+    }
+    for (const d of s.dixis) {
+      const sign = this.dixiSigns.get(d.id);
+      const inside = act?.kind === 'dixi' && act.targetId === d.id;
+      sign?.setText(inside ? 'Besetzt' : d.cooldown > 0 ? 'Putzen…' : 'Frei').setColor(inside ? '#ff8a8a' : d.cooldown > 0 ? '#ffd23f' : '#8cff7a');
+    }
+    for (const at of s.attractions) {
+      const sign = this.attractionSigns.get(at.id);
+      sign?.setText(at.cooldown > 0 ? `in ${Math.ceil(at.cooldown)} s` : '');
     }
 
     // --- NPCs ---
@@ -366,9 +480,16 @@ export class GameScene extends Phaser.Scene {
       const v = this.npcViews.get(n.id);
       if (!v) continue;
       v.root.setPosition(n.pos.x, n.pos.y).setDepth(n.pos.y);
+      if (n.state === 'down') {
+        // Bierleiche: liegt flach
+        v.body.rotation = Math.PI / 2 * (v.phase > 5 ? 1 : -1);
+        v.body.y = 14;
+        continue;
+      }
       v.body.y = n.moving ? -Math.abs(Math.sin(t * 10 + v.phase)) * 4 : 0;
       if (n.moving && Math.abs(Math.cos(n.facing)) > 0.2) v.body.setFlipX(Math.cos(n.facing) < 0);
-      v.body.rotation = n.moving ? Math.sin(t * 10 + v.phase) * 0.06 : 0;
+      const sway = n.drunk ? Math.sin(t * 3 + v.phase) * 0.22 : 0;
+      v.body.rotation = (n.moving ? Math.sin(t * 10 + v.phase) * 0.06 : 0) + sway;
       if (v.carry) {
         v.carry.setVisible(!!n.carrying);
         if (n.carrying) v.carry.setTexture(`drink_${n.carrying}` as TextureKey);
@@ -432,6 +553,22 @@ export class GameScene extends Phaser.Scene {
     return (pk.kind === 'drink' ? `drink_${pk.drink}` : `food_${pk.food}`) as TextureKey;
   }
 
+  /** Ladebalken über dem Kopf, solange R gehalten wird; der grüne Bereich ist der Sweet-Spot */
+  private renderBurpMeter(): void {
+    const g = this.burpMeter;
+    g.clear();
+    const p = this.state.player;
+    if (!p.burpCharging || this.ending) return;
+    const w = 90, h = 12, x = p.pos.x - w / 2, y = p.pos.y - 112;
+    const max = BURP.autoReleaseAt;
+    g.fillStyle(0x000000, 0.6).fillRoundedRect(x - 3, y - 3, w + 6, h + 6, 6);
+    g.fillStyle(0x7ed957, 0.55).fillRect(x + (w * BURP.sweetStart) / max, y, (w * (BURP.sweetEnd - BURP.sweetStart)) / max, h);
+    const f = Math.min(1, p.burpCharge / max);
+    const color = p.burpCharge < BURP.sweetStart ? 0x8fd3ff : p.burpCharge <= BURP.sweetEnd ? 0x7ed957 : 0xff5a4f;
+    g.fillStyle(color, 1).fillRect(x, y + 3, w * f, h - 6);
+    g.lineStyle(2, 0xffffff, 0.9).strokeRoundedRect(x - 3, y - 3, w + 6, h + 6, 6);
+  }
+
   private renderFocus(t: number): void {
     const s = this.state;
     const f = s.focus;
@@ -439,14 +576,24 @@ export class GameScene extends Phaser.Scene {
 
     this.prostRing.clear();
     if (prostNpc) {
+      // Takt-Puls: springt auf jedem Schlag der Blasmusik, im Takt-Fenster wird der Ring grün
+      const period = 60 / EVENTS.prost.beatBpm;
+      const pulse = Math.exp(-((s.prost.elapsed % period) / period) * 5);
+      const onBeat = s.prostOnBeat;
       this.prostMark.setVisible(true).setPosition(prostNpc.pos.x, prostNpc.pos.y - 70 + Math.sin(t * 12) * 4)
-        .setScale(1 + Math.sin(t * 10) * 0.08);
-      const frac = s.prost.timeLeft / 3;
-      this.prostRing.lineStyle(6, 0xffd23f, 1);
+        .setScale(1 + pulse * 0.25);
+      const frac = s.prost.timeLeft / EVENTS.prost.windowSeconds;
+      this.prostRing.lineStyle(6, onBeat ? 0x7ed957 : 0xffd23f, 1);
       this.prostRing.beginPath();
       this.prostRing.arc(prostNpc.pos.x, prostNpc.pos.y - 24, 34, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac);
       this.prostRing.strokePath();
+      this.prostRing.lineStyle(3, onBeat ? 0x7ed957 : 0xffffff, pulse * 0.8);
+      this.prostRing.strokeCircle(prostNpc.pos.x, prostNpc.pos.y - 24, 34 + (1 - pulse) * 26);
     } else this.prostMark.setVisible(false);
+    const duelNpc = s.duel.active ? s.findNpc(s.duel.npcId) : undefined;
+    this.duelMark.setVisible(!!duelNpc);
+    if (duelNpc) this.duelMark.setPosition(duelNpc.pos.x, duelNpc.pos.y - 70 + Math.sin(t * 9) * 4).setScale(1 + Math.sin(t * 7) * 0.06);
+    this.renderBurpMeter();
 
     if (f && f.type !== 'prost' && !this.ending) {
       const verb = this.touch ? '🍺' : 'E:';
@@ -552,20 +699,23 @@ export class GameScene extends Phaser.Scene {
         audio.play('gulp', { rate: Phaser.Math.FloatBetween(0.9, 1.15) });
         if (e.viaProst) audio.play('clink');
         this.foamFx.explode(10, e.pos.x, e.pos.y - 40);
-        const promille = e.viaProst ? 'Prost-Bonus!' : `+${DRINKS[e.drink].promille.toFixed(2).replace('.', ',')} ‰`;
+        const gained = `+${e.promille.toFixed(2).replace('.', ',')} ‰`;
+        const promille = e.viaProst ? `Prost! ${gained}` : gained;
         this.floatText(e.pos.x, e.pos.y - 70, promille, COLORS.gold);
         break;
       }
       case 'food':
         audio.play(e.food === 'wasser' ? 'gulp' : 'crunch');
-        this.floatText(e.pos.x, e.pos.y - 70, `${FOODS[e.food].name}! Kotz ${FOODS[e.food].kotz}`, COLORS.vomit, 22);
+        this.floatText(e.pos.x, e.pos.y - 70, `${FOODS[e.food].name}! Magen +${FOODS[e.food].magen}`, COLORS.vomit, 22);
         break;
       case 'burp': {
-        audio.play(e.failed ? 'burpFail' : 'burp', { rate: Phaser.Math.FloatBetween(0.85, 1.2) });
+        const perfect = e.quality === 'perfect';
+        audio.play(e.failed ? 'burpFail' : 'burp', { rate: perfect ? 0.8 : Phaser.Math.FloatBetween(0.95, 1.25), volume: e.quality === 'weak' && !e.failed ? 0.5 : undefined });
         const dir = this.playerView.body.flipX ? -1 : 1;
-        this.burpFx.explode(14, e.pos.x + dir * 20, e.pos.y - 40);
-        this.cameras.main.shake(200, 0.004);
-        this.floatText(e.pos.x, e.pos.y - 100, e.failed ? 'Ups…' : 'BÖÖRP!', e.failed ? COLORS.vomit : '#ffffff', 36);
+        this.burpFx.explode(perfect ? 26 : e.quality === 'weak' ? 6 : 14, e.pos.x + dir * 20, e.pos.y - 40);
+        this.cameras.main.shake(perfect ? 320 : 200, perfect ? 0.008 : 0.004);
+        const label = e.failed ? (e.quality === 'over' ? 'Zu lang… Ups!' : 'Ups…') : perfect ? 'PERFEKT! BÖÖÖRP!' : 'pffft…';
+        this.floatText(e.pos.x, e.pos.y - 100, label, e.failed ? COLORS.vomit : perfect ? COLORS.gold : '#cfd8e3', perfect ? 40 : 30);
         break;
       }
       case 'burpCooldown':
@@ -580,8 +730,79 @@ export class GameScene extends Phaser.Scene {
       case 'prostStart':
         audio.play('prost');
         break;
+      case 'prostBeat':
+        audio.play('clink', { rate: e.n % 2 ? 1.25 : 1.05, volume: 0.25 });
+        break;
       case 'prostEnd':
-        if (e.joined) this.confettiFx.explode(30, pp.x, pp.y - 40);
+        if (e.joined) this.confettiFx.explode(e.onBeat ? 30 + e.combo * 15 : 30, pp.x, pp.y - 40);
+        if (e.onBeat) this.floatText(pp.x, pp.y - 130, e.combo > 1 ? `Im Takt! Combo ×${e.combo}` : 'Im Takt!', '#7ed957', 30);
+        break;
+      case 'burpChargeStart':
+        break;
+      case 'activity':
+        if (e.stage === 'start') audio.play(e.kind === 'riesenrad' ? 'whoosh' : 'click');
+        if (e.stage === 'inside') audio.play('click', { rate: 0.7 });
+        if (e.stage === 'end' && e.kind === 'dixi') {
+          audio.play('whoosh', { rate: 1.4 });
+          this.floatText(pp.x, pp.y - 100, `Erleichtert! Kotz ${ATTRACTIONS.dixi.kotz}`, '#8fd3ff', 26);
+        }
+        break;
+      case 'lukasStrike': {
+        const bell = e.prize === 'heart' || e.power >= ATTRACTIONS.lukas.bellAt;
+        audio.play(bell ? 'win' : 'bump', { rate: bell ? 1.2 : 1 });
+        this.cameras.main.shake(200, 0.006);
+        this.lukasPuckTween?.stop();
+        this.lukasPuck.y = this.lukasPuckY(0);
+        this.lukasPuckTween = this.tweens.add({
+          targets: this.lukasPuck, y: this.lukasPuckY(Math.max(0.05, e.power)), duration: 260, ease: 'Quad.out', yoyo: true, hold: 300,
+        });
+        const label = e.prize === 'heart' ? 'DING! Lebkuchenherz!' : e.prize === 'mass' ? (bell ? 'DING! Freimaß!' : 'Freimaß!') : 'Schwach…';
+        this.floatText(e.pos.x, e.pos.y - 120, `${Math.round(e.power * 100)} % – ${label}`, bell ? COLORS.gold : '#ffffff', 28);
+        if (bell) this.confettiFx.explode(50, LUKAS.rect.x + LUKAS.rect.w / 2, LUKAS.rect.y - 180);
+        break;
+      }
+      case 'rempler':
+        audio.play('bump');
+        this.cameras.main.shake(160, 0.006);
+        this.foamFx.explode(16, e.pos.x, e.pos.y - 40);
+        this.floatText(e.pos.x, e.pos.y - 110, 'Bier verschüttet!', '#ff8ad8', 26);
+        break;
+      case 'securityPush':
+        audio.play('bump', { rate: 0.8 });
+        this.cameras.main.shake(220, 0.008);
+        this.floatText(e.pos.x, e.pos.y - 110, 'Rausgeschmissen!', '#ff8a8a', 28);
+        break;
+      case 'heartSaved':
+        audio.play('win');
+        this.confettiFx.explode(60, e.pos.x, e.pos.y - 40);
+        break;
+      case 'npcGone': {
+        const v = this.npcViews.get(e.npcId);
+        if (v) { v.root.destroy(); this.npcViews.delete(e.npcId); }
+        break;
+      }
+      case 'npcDown':
+        break;
+      case 'duelStart':
+        audio.play('burp', { rate: 0.7, volume: 0.6 });
+        break;
+      case 'duelEnd': {
+        const npc = this.state.findNpc(e.npcId);
+        if (npc && e.quality !== null) {
+          // Der Herausforderer kontert
+          this.time.delayedCall(450, () => {
+            audio.play('burp', { rate: e.npcPerfect ? 0.65 : 1.3 });
+            this.burpFx.explode(e.npcPerfect ? 22 : 8, npc.pos.x, npc.pos.y - 40);
+          });
+        }
+        this.floatText(pp.x, pp.y - 140, e.won ? 'Duell gewonnen! Freimaß!' : e.quality === null ? 'Duell verpasst…' : 'Duell verloren…',
+          e.won ? COLORS.gold : '#cfd8e3', 30);
+        if (e.won) this.confettiFx.explode(40, pp.x, pp.y - 40);
+        break;
+      }
+      case 'sideGoal':
+        audio.play('win', { volume: 0.4, rate: 1.3 });
+        this.floatText(pp.x, pp.y - 150, `Aufgabe: ${e.text} ✅`, '#8cff7a', 26);
         break;
       case 'carouselEnter':
         audio.play('whoosh');
@@ -600,6 +821,17 @@ export class GameScene extends Phaser.Scene {
       case 'hour':
         audio.play('clink');
         break;
+      case 'phaseChange':
+        audio.setMusicVolume(this.state.evening.musicVolume);
+        audio.play('prost');
+        this.confettiFx.explode(60, pp.x, pp.y - 40);
+        break;
+      case 'vomitSurvived':
+        this.playVomitBurst(e.count, e.max);
+        break;
+      case 'vomitRecovered':
+        this.floatText(pp.x, pp.y - 110, 'Weiter geht\'s!', '#ffffff', 26);
+        break;
       case 'vomit':
         this.playVomitSequence();
         break;
@@ -612,6 +844,23 @@ export class GameScene extends Phaser.Scene {
   // =========================================================================
   // End-Sequenzen
   // =========================================================================
+
+  /** Gekotzt, aber überlebt: kurzer Würg-Moment, das Spiel läuft weiter. */
+  private playVomitBurst(count: number, max: number): void {
+    const p = this.state.player.pos;
+    const dir = this.playerView.body.flipX ? -1 : 1;
+    audio.play('vomit', { rate: Phaser.Math.FloatBetween(0.95, 1.1) });
+    this.cameras.main.shake(350, 0.01);
+    const fx = this.add.particles(p.x + dir * 12, p.y - 36, 'drop', {
+      speedX: { min: 140 * dir, max: 360 * dir }, speedY: { min: -220, max: -60 }, gravityY: 700,
+      lifespan: 900, scale: { start: 1.2, end: 0.6 }, quantity: 4, frequency: 25,
+    }).setDepth(p.y + 1);
+    this.time.delayedCall(900, () => { fx.stop(); this.time.delayedCall(1000, () => fx.destroy()); });
+    const puddle = this.add.image(p.x + dir * 70, p.y + 6, 'puddle').setScale(0).setDepth(DEPTH.decal + 1);
+    this.tweens.add({ targets: puddle, scale: 1, duration: 900, ease: 'Sine.out' });
+    this.tweens.add({ targets: puddle, alpha: 0, delay: 14000, duration: 4000, onComplete: () => puddle.destroy() });
+    this.floatText(p.x, p.y - 120, `Gekotzt! (${count}/${max})`, COLORS.vomit, 34);
+  }
 
   private playVomitSequence(): void {
     this.ending = true;

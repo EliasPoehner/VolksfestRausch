@@ -3,7 +3,7 @@
  * Doppeltsehen nicht auf die Anzeigen.
  */
 import Phaser from 'phaser';
-import { METERS } from '../../config/balance';
+import { EVENTS, METERS, MODIFIERS, PERKS, PHASES } from '../../config/balance';
 import { formatPromille, type GameEvent } from '../../core';
 import { audio } from '../../audio/AudioManager';
 import type { GameScene } from './GameScene';
@@ -20,16 +20,19 @@ export class HudScene extends Phaser.Scene {
   private g!: Phaser.GameObjects.Graphics;
   private promilleText!: Phaser.GameObjects.Text;
   private clockText!: Phaser.GameObjects.Text;
+  private phaseText!: Phaser.GameObjects.Text;
   private statusText!: Phaser.GameObjects.Text;
   private alertText!: Phaser.GameObjects.Text;
   private prostText!: Phaser.GameObjects.Text;
   private flashText!: Phaser.GameObjects.Text;
+  private goalsText!: Phaser.GameObjects.Text;
   private pauseLayer!: Phaser.GameObjects.Container;
   private muteIcon!: Phaser.GameObjects.Text;
-  private bars!: { kotz: Bar; sprudel: Bar; misch: Bar };
-  private shown = { kotz: 0, sprudel: 0, misch: 0 };
+  private bars!: { kotz: Bar; sprudel: Bar; misch: Bar; magen: Bar };
+  private shown = { kotz: 0, sprudel: 0, misch: 0, magen: 0 };
   private onPause = (p: boolean) => this.pauseLayer.setVisible(p);
   private t = 0;
+  private heartSavedAt = -10;
 
   constructor() { super('Hud'); }
 
@@ -40,7 +43,7 @@ export class HudScene extends Phaser.Scene {
   create(): void {
     const { width: W, height: H } = this.scale.gameSize;
     this.t = 0;
-    this.shown = { kotz: 0, sprudel: 0, misch: 0 };
+    this.shown = { kotz: 0, sprudel: 0, misch: 0, magen: 0 };
 
     // Hintergrundleiste
     const bg = this.add.graphics();
@@ -52,23 +55,36 @@ export class HudScene extends Phaser.Scene {
     this.add.text(72, 16, 'PROMILLE', textStyle(13, '#cfd8e3', { strokeThickness: 3 }));
 
     const mk = (x: number, label: string, color: number, marker?: number): Bar => ({
-      x, y: 48, w: 220, h: 22, color, marker,
+      x, y: 48, w: 190, h: 22, color, marker,
       label: this.add.text(x, 20, label, textStyle(16, COLORS.cream, { strokeThickness: 3 })),
     });
     this.bars = {
-      kotz: mk(270, 'Kotzleiste', 0x7ed957, METERS.kotz.warningThreshold),
-      sprudel: mk(520, 'Sprudel-Druck', 0x6fc3ff, METERS.sprudel.dangerThreshold),
-      misch: mk(770, 'Mischmasch', 0xc77dff, METERS.misch.doubleKotzThreshold),
+      kotz: mk(262, 'Kotzleiste', 0x7ed957, METERS.kotz.warningThreshold),
+      sprudel: mk(462, 'Sprudel-Druck', 0x6fc3ff, METERS.sprudel.dangerThreshold),
+      misch: mk(662, 'Mischmasch', 0xc77dff, METERS.misch.doubleKotzThreshold),
+      magen: mk(862, 'Magen', 0xe0a458),
     };
     this.g = this.add.graphics();
 
     this.clockText = this.add.text(W - 150, 47, '18:00', textStyle(40, COLORS.cream)).setOrigin(0.5);
-    this.add.text(W - 150, 16, 'BIS ZAPFENSTREICH 23:00', textStyle(12, '#cfd8e3', { strokeThickness: 3 })).setOrigin(0.5, 0);
+    this.phaseText = this.add.text(W - 150, 16, '', textStyle(12, '#cfd8e3', { strokeThickness: 3 })).setOrigin(0.5, 0);
 
     this.statusText = this.add.text(16, 94, '', textStyle(18, COLORS.cream, { strokeThickness: 4 }));
     this.alertText = this.add.text(W / 2, 112, '', textStyle(26, '#ff8ad8')).setOrigin(0.5, 0);
     this.prostText = this.add.text(W / 2, H * 0.3, '', textStyle(44, COLORS.gold, { strokeThickness: 8, align: 'center' })).setOrigin(0.5);
     this.flashText = this.add.text(W / 2, H * 0.42, '', textStyle(54, COLORS.cream, { strokeThickness: 9, align: 'center' })).setOrigin(0.5).setAlpha(0);
+
+    // Wiesn-Aufgaben (rechts unter Ton/Pause)
+    this.goalsText = this.add.text(W - 16, 142, '', textStyle(15, COLORS.cream, { strokeThickness: 4, align: 'right', lineSpacing: 2 })).setOrigin(1, 0);
+
+    // Start-Banner: Wetter, Perk, Tageswiesn
+    const st = this.game_.state;
+    if (st) {
+      const mod = MODIFIERS[st.setup.modifier];
+      const lines = [st.setup.daily ? '📅 Tageswiesn' : '', st.setup.modifier !== 'normal' ? `${mod.icon} ${mod.name}` : '',
+        st.setup.perk ? `${PERKS[st.setup.perk].icon} ${PERKS[st.setup.perk].name}` : ''].filter(Boolean);
+      if (lines.length) this.time.delayedCall(400, () => this.flash(lines.join('  ·  ')));
+    }
 
     // Ton & Pause (auch für Touch)
     this.muteIcon = this.add.text(W - 26, 100, audio.muted ? '🔇' : '🔊', { fontSize: '30px' }).setOrigin(1, 0).setInteractive({ useHandCursor: true });
@@ -101,39 +117,72 @@ export class HudScene extends Phaser.Scene {
     this.promilleText.setText(formatPromille(m.promille));
     this.clockText.setText(s.clock);
     this.clockText.setColor(s.timeLeft < 20 ? COLORS.gold : COLORS.cream);
+    const lastOrder = s.evening.id === 'lastOrder';
+    this.phaseText.setText(`${s.evening.name.toUpperCase()}  ·  BIS 23:00`).setColor(lastOrder ? COLORS.gold : '#cfd8e3');
 
     // Balken weich nachziehen
     const ease = Math.min(1, dt * 8);
     this.shown.kotz += (m.kotz - this.shown.kotz) * ease;
     this.shown.sprudel += (m.sprudel - this.shown.sprudel) * ease;
     this.shown.misch += (m.misch - this.shown.misch) * ease;
+    this.shown.magen += (m.magen - this.shown.magen) * ease;
 
     this.g.clear();
     this.drawBar(this.bars.kotz, this.shown.kotz, m.kotz >= METERS.kotz.warningThreshold);
     this.drawBar(this.bars.sprudel, this.shown.sprudel, m.sprudel > METERS.sprudel.dangerThreshold);
     this.drawBar(this.bars.misch, this.shown.misch, m.misch >= METERS.misch.doubleKotzThreshold);
-    this.bars.misch.label.setText(m.kotzMultiplier > 1 ? 'Mischmasch  ×2 Kotz!' : 'Mischmasch');
+    this.drawBar(this.bars.magen, this.shown.magen, false);
+    this.bars.misch.label.setText(m.kotzMultiplier > 1 ? 'Mischmasch ×2!' : 'Mischmasch');
+    this.bars.magen.label.setText(m.emptyStomach > 0 ? 'Magen leer!' : 'Magen');
+    this.bars.magen.label.setColor(m.emptyStomach > 0 ? '#ff9a8a' : COLORS.cream);
 
     // Statuszeile
     const p = s.player;
-    const burp = p.burpCooldown > 0 ? `Rülpsen in ${p.burpCooldown.toFixed(1).replace('.', ',')} s` : 'Rülpsen bereit (R)';
-    this.statusText.setText(`🍺 ${s.stats.drinks}   💨 ${s.stats.burps}   ·   ${burp}`);
+    const burpKey = this.game_.touch ? '💨 halten' : 'R halten';
+    const burp = p.burpCharging ? 'Rülpser lädt… im Grünen loslassen!'
+      : p.burpCooldown > 0 ? `Rülpsen in ${p.burpCooldown.toFixed(1).replace('.', ',')} s` : `Rülpsen bereit (${burpKey})`;
+    const lives = '🤢'.repeat(s.vomitsLeft) + '💀'.repeat(Math.max(0, 3 - s.vomitsLeft));
+    const buffs = [
+      p.boostTimer > 0 ? '⚡ Kick' : '', p.prostBoostTimer > 0 ? '🥂 Prost ×2' : '', s.prostCombo > 0 ? `🎺 Combo ×${s.prostCombo}` : '',
+      p.lebkuchenherz ? '💖 Lebkuchenherz' : '',
+    ].filter(Boolean).join('  ');
+    this.statusText.setText(`🍺 ${s.stats.drinks}   💨 ${s.stats.burps}   ·   ${burp}   ·   Sanka-Karte: ${lives}${buffs ? '   ·   ' + buffs : ''}`);
     this.statusText.setColor(p.burpCooldown > 0 ? '#cfd8e3' : '#8fd3ff');
+
+    // Wiesn-Aufgaben
+    this.goalsText.setText(['Wiesn-Aufgaben:', ...s.sideGoals.map((g) => `${g.done ? '✅' : '⬜'} ${g.def.text}`)].join('\n'));
 
     // Hinweise
     let alert = '';
     if (s.phase !== 'playing') alert = '';
+    else if (s.isVomiting) alert = `Reiß di zam!  ${this.game_.touch ? 'Trink-Button' : 'E'} hämmern!`;
+    else if (p.activity) {
+      const a = p.activity;
+      const left = Math.max(0, a.total - a.elapsed).toFixed(1).replace('.', ',');
+      const key = this.game_.touch ? 'Trink-Button' : 'E';
+      if (a.kind === 'dixi') alert = a.elapsed < a.queue ? `Schlange am Klo… noch ${left} s` : 'Besetzt! Erleichterung…';
+      else if (a.kind === 'riesenrad') alert = `Riesenrad: durchschnaufen… ${left} s`;
+      else alert = `Hau den Lukas! ${key}, wenn die Nadel ganz oben is!  (${Math.round(s.lukasPower * 100)} %)`;
+    }
     else if (s.isWarning) alert = 'Mir is so schlecht… iss was!';
     else if (s.controlsInverted) alert = 'Steuerung verdreht!';
     else if (p.onCarousel) alert = 'Karussell! Schnell runter!';
     else if (p.slowTimer > 0) alert = 'Hendl-Koma… langsam!';
-    else if (m.sprudel > METERS.sprudel.dangerThreshold) alert = 'Sprudel-Alarm! Rülpsen (R)!';
+    else if (m.sprudel > METERS.sprudel.dangerThreshold) alert = `Sprudel-Alarm! Rülpsen (${this.game_.touch ? '💨' : 'R'} halten)!`;
     this.alertText.setText(alert).setColor(s.isWarning ? COLORS.vomit : '#ff8ad8')
       .setScale(alert ? 1 + Math.sin(this.t * 8) * 0.04 : 1);
 
-    if (s.prost.active) {
+    if (s.duel.active) {
+      const key = this.game_.touch ? '💨' : 'R';
+      const hint = s.duel.npcPerfect ? 'Der is guad – nur PERFEKT gewinnt!' : 'Rülps, aber ned daneben!';
+      this.prostText.setText(`RÜLPS-DUELL!  ${key} halten, im Grünen loslassen!\n${hint}  ${Math.max(0, s.duel.timeLeft).toFixed(1).replace('.', ',')} s`)
+        .setScale(1 + Math.sin(this.t * 8) * 0.04).setColor('#8fd3ff');
+    } else if (s.prost.active) {
       const key = this.game_.touch ? 'Trink-Button' : 'E';
-      this.prostText.setText(`PROST!  ${key} drücken!\n${s.prost.timeLeft.toFixed(1).replace('.', ',')} s`).setScale(1 + Math.sin(this.t * 12) * 0.05);
+      const period = 60 / EVENTS.prost.beatBpm;
+      const pulse = Math.exp(-((s.prost.elapsed % period) / period) * 5);
+      this.prostText.setText(`PROST!  ${key} im Takt drücken!\n${s.prost.timeLeft.toFixed(1).replace('.', ',')} s`)
+        .setScale(1 + pulse * 0.08).setColor(s.prostOnBeat ? '#7ed957' : COLORS.gold);
     } else this.prostText.setText('');
   }
 
@@ -147,8 +196,20 @@ export class HudScene extends Phaser.Scene {
 
   /** Wird von der GameScene für passende Events aufgerufen */
   handleEvent(e: GameEvent): void {
-    if (e.type === 'hour') this.flash(`${e.hour}:00 Uhr – a Gaudi!`);
+    // Zur vollen Stunde – außer es beginnt gerade eine neue Phase (die hat ihr eigenes Banner)
+    if (e.type === 'hour' && !PHASES.some((p) => p.fromHour === e.hour)) this.flash(`${e.hour}:00 Uhr – a Gaudi!`);
+    if (e.type === 'phaseChange') {
+      const p = PHASES.find((x) => x.id === e.phase);
+      if (p) this.flash(`${p.banner}\n${p.subline}`);
+    }
     if (e.type === 'gameEnd' && e.reason === 'zapfenstreich') this.flash('ZAPFENSTREICH!\nGeschafft!');
+    if (e.type === 'heartSaved') this.heartSavedAt = this.t;
+    if (e.type === 'vomitSurvived') {
+      const left = e.max - e.count;
+      const first = this.t - this.heartSavedAt < 0.5 ? 'Des Lebkuchenherz hod di grett!'
+        : e.cause === 'sprudel' ? 'Zu viel Sprudel!' : e.cause === 'misch' ? 'Zu wild gemischt!' : 'Des war oans z\'vui…';
+      this.flash(`${first}\n${left === 1 ? 'Noch einmal und der Sanka kommt!' : `Noch ${left}× bis zum Sanka`}`);
+    }
     if (e.type === 'vomit') this.flash(e.cause === 'sprudel' ? 'Zu viel Sprudel!' : e.cause === 'misch' ? 'Zu wild gemischt!' : 'Des war oans z\'vui…');
   }
 
