@@ -16,7 +16,7 @@
  */
 import {
   ATTRACTIONS, BURP, DRINKS, DRUNK, EVENTS, FOODS, HAZARDS, LINES, METERS, NPC_BEHAVIOR, PHASES, PLAYER, ROUND, SPAWNS, VOMIT,
-  type DrinkId, type EveningPhaseConfig, type FoodId,
+  type DrinkId, type EveningPhaseConfig, type FoodId, type RunFactors,
 } from '../config/balance';
 import {
   BENCHES, BENCH_SLOTS, BIERGARTEN, BOOTHS, BOOTH_COUNTER_OFFSET, BUMPER_ARENA, CAROUSEL, CAROUSEL_POLE_RADIUS,
@@ -34,6 +34,7 @@ import {
 } from './math';
 import { Meters } from './Meters';
 import { clockHour, clockLabel, computeScore, titleFor } from './scoring';
+import { normalizeSetup, pickSideGoals, runFactors, type RunSetup, type SideGoalDef } from './meta';
 
 /** Eingabe für einen Logik-Schritt – vom Input-Modul geliefert. */
 export interface PlayerCommand {
@@ -100,7 +101,7 @@ export class GameState {
   readonly stats: GameStats = {
     drinks: 0, foods: 0, burps: 0, failedBurps: 0, perfectBurps: 0, prosts: 0, prostsOnBeat: 0, maxProstCombo: 0,
     maxPromille: 0, vomits: 0, dixiVisits: 0, riesenradRides: 0, bestLukas: 0, lukasBells: 0, rempler: 0,
-    securityPushes: 0, heartSaves: 0,
+    securityPushes: 0, heartSaves: 0, drinkKinds: [],
   };
   /** Aktuelle Prost-Combo: "Prost!" im Takt in Folge */
   prostCombo = 0;
@@ -117,14 +118,26 @@ export class GameState {
   /** Schutzzeit nach einem Rempler (s) */
   private remplerGrace = 0;
 
-  constructor(seed = Date.now()) {
-    this.rng = new Rng(seed);
+  /** Seed, Wetter, Perk der Runde */
+  readonly setup: RunSetup;
+  /** Zusammengerechnete Faktoren aus Wetter und Perk */
+  readonly factors: RunFactors;
+  /** Wiesn-Aufgaben dieser Runde */
+  readonly sideGoals: { def: SideGoalDef; done: boolean }[];
+
+  /** @param setup Seed oder komplettes Setup (Wetter, Perk, Tageswiesn) */
+  constructor(setup: number | Partial<RunSetup> = Date.now()) {
+    this.setup = normalizeSetup(setup);
+    this.factors = runFactors(this.setup);
+    this.sideGoals = pickSideGoals(this.setup.seed).map((def) => ({ def, done: false }));
+    this.meters.run = this.factors;
+    this.rng = new Rng(this.setup.seed);
     this.player = {
       id: PLAYER_ID, pos: { ...PLAYER_START }, vel: { x: 0, y: 0 }, facing: -Math.PI / 2,
       slowTimer: 0, invertTimer: 0, onCarousel: false, spin: 0, burpCooldown: 0, burpCharging: false, burpCharge: 0,
       boostTimer: 0, prostBoostTimer: 0, vomitTimer: 0, vomitElapsed: 0, activity: null, lebkuchenherz: false,
     };
-    this.nextProstIn = this.rng.range(EVENTS.prost.minInterval * 0.5, EVENTS.prost.maxInterval * 0.6);
+    this.nextProstIn = this.rng.range(EVENTS.prost.minInterval * 0.5, EVENTS.prost.maxInterval * 0.6) * this.factors.prostInterval;
     this.applyEvening(PHASES[0]);
     this.buildWorld();
   }
@@ -164,11 +177,11 @@ export class GameState {
       }
     });
 
-    for (let i = 0; i < SPAWNS.visitors; i++) {
+    for (let i = 0; i < SPAWNS.visitors + this.factors.extraVisitors; i++) {
       const pos = this.randomWalkablePoint();
       this.npcs.push(this.makeNpc('visitor', pos));
     }
-    for (let i = 0; i < SPAWNS.waitresses; i++) {
+    for (let i = 0; i < SPAWNS.waitresses + this.factors.extraWaitresses; i++) {
       const w = this.makeNpc('waitress', { x: TENT_DOOR.x + this.rng.range(-80, 80), y: TENT_DOOR.y });
       w.state = 'refill';
       w.timer = this.rng.range(0.5, SPAWNS.waitressRefillSeconds * 2);
@@ -291,6 +304,7 @@ export class GameState {
     this.updateClock();
     this.stats.maxPromille = Math.max(this.stats.maxPromille, this.meters.promille);
     this.checkEnd();
+    if (this.phase === 'playing') this.updateSideGoals(null);
   }
 
   // --- Spieler -------------------------------------------------------------
@@ -329,9 +343,9 @@ export class GameState {
     if (p.invertTimer > 0) move = { x: -move.x, y: -move.y };
 
     // Ab 1,5 ‰: Drift (langsames, "organisches" Schwanken über Sinuswellen)
-    const driftStrength = promille >= DRUNK.driftThreshold
+    const driftStrength = (promille >= DRUNK.driftThreshold
       ? Math.min(DRUNK.driftMax, (promille - DRUNK.driftThreshold + 0.3) * DRUNK.driftPerPromille)
-      : 0;
+      : 0) + this.factors.driftBonus;
     const t = this.elapsed;
     this.drift = {
       x: (Math.sin(t * 0.9) + Math.sin(t * 2.3 + 1.7) * 0.5) / 1.5 * driftStrength,
@@ -341,7 +355,7 @@ export class GameState {
     const driftScale = moving ? 1 : 0.3;
     const dir = { x: move.x + this.drift.x * driftScale, y: move.y + this.drift.y * driftScale };
 
-    const speed = PLAYER.speed * (p.slowTimer > 0 ? PLAYER.slowFactor : 1) * (p.boostTimer > 0 ? PLAYER.boostFactor : 1)
+    const speed = PLAYER.speed * this.factors.speed * (p.slowTimer > 0 ? PLAYER.slowFactor : 1) * (p.boostTimer > 0 ? PLAYER.boostFactor : 1)
       * (p.burpCharging ? PLAYER.burpChargeFactor : 1);
     p.vel = { x: dir.x * speed, y: dir.y * speed };
     p.pos.x += p.vel.x * dt;
@@ -540,8 +554,8 @@ export class GameState {
         // Raus aus dem Biergarten: Richtung weg von der Gartenmitte
         const mid = { x: BIERGARTEN.x + BIERGARTEN.w / 2, y: BIERGARTEN.y + BIERGARTEN.h / 2 };
         const out = normalize({ x: pp.x - mid.x + dir.x * 40, y: pp.y - mid.y + dir.y * 40 });
-        this.player.pos.x += out.x * cfg.push;
-        this.player.pos.y += out.y * cfg.push;
+        this.player.pos.x += out.x * cfg.push * this.factors.shove;
+        this.player.pos.y += out.y * cfg.push * this.factors.shove;
         this.collideWithWorld(this.player.pos, PLAYER.radius);
         this.player.slowTimer = Math.max(this.player.slowTimer, 1);
         this.stats.securityPushes++;
@@ -602,12 +616,12 @@ export class GameState {
     const p = this.player;
     n.bumpCooldown = cfg.cooldownSeconds;
     this.remplerGrace = cfg.playerGraceSeconds;
-    this.meters.promille = Math.max(0, this.meters.promille - cfg.promilleLoss);
+    this.meters.promille = Math.max(0, this.meters.promille - cfg.promilleLoss * this.factors.shove);
     this.meters.sprudel = Math.min(METERS.sprudel.max, this.meters.sprudel + cfg.sprudel);
     this.meters.addKotz(cfg.kotz);
     const dir = normalize({ x: p.pos.x - n.pos.x, y: p.pos.y - n.pos.y });
-    p.pos.x += dir.x * cfg.knockback;
-    p.pos.y += dir.y * cfg.knockback;
+    p.pos.x += dir.x * cfg.knockback * this.factors.shove;
+    p.pos.y += dir.y * cfg.knockback * this.factors.shove;
     this.collideWithWorld(p.pos, PLAYER.radius);
     // Rempler torkelt danach weiter
     n.state = 'walk';
@@ -672,7 +686,7 @@ export class GameState {
   }
 
   private randomFood(): FoodId {
-    return this.rng.weighted(Object.values(FOODS), (f) => f.spawnWeight).id;
+    return this.rng.weighted(Object.values(FOODS), (f) => f.spawnWeight * (f.id === 'wasser' ? this.factors.wasserWeight : 1)).id;
   }
 
   private spawnFieldPickup(): void {
@@ -698,7 +712,7 @@ export class GameState {
     const fieldCount = this.pickups.filter((p) => p.source === 'field').length;
     this.fieldSpawnTimer -= dt;
     if (this.fieldSpawnTimer <= 0 && fieldCount < SPAWNS.maxFieldPickups) {
-      this.fieldSpawnTimer = SPAWNS.fieldSpawnInterval * this.evening.fieldSpawnIntervalFactor;
+      this.fieldSpawnTimer = SPAWNS.fieldSpawnInterval * this.evening.fieldSpawnIntervalFactor * this.factors.fieldSpawnInterval;
       this.spawnFieldPickup();
     }
 
@@ -843,6 +857,7 @@ export class GameState {
   }
 
   private consumeDrink(id: DrinkId): void {
+    if (!this.stats.drinkKinds.includes(id)) this.stats.drinkKinds.push(id);
     const gained = this.meters.drink(id, this.elapsed);
     const d = DRINKS[id];
     if (d.speedBoostSeconds) this.player.boostTimer = d.speedBoostSeconds;
@@ -1015,7 +1030,8 @@ export class GameState {
     if (this.isVomiting || this.busy) return;
     this.nextProstIn -= dt;
     if (this.nextProstIn > 0) return;
-    this.nextProstIn = this.rng.range(EVENTS.prost.minInterval, EVENTS.prost.maxInterval) * this.evening.prostIntervalFactor;
+    this.nextProstIn = this.rng.range(EVENTS.prost.minInterval, EVENTS.prost.maxInterval) * this.evening.prostIntervalFactor
+      * this.factors.prostInterval;
 
     // Nächstgelegenen Besucher wählen, der nicht zu weit weg ist
     let best: Npc | null = null;
@@ -1071,7 +1087,7 @@ export class GameState {
         if (n.role === 'visitor' && !n.family && !n.drunk && n.state !== 'down') n.drunk = this.rng.chance(share);
       }
       // Neuer Rhythmus: der nächste "Prost!"-Ruf kommt nicht später als im neuen Takt
-      this.nextProstIn = Math.min(this.nextProstIn, EVENTS.prost.maxInterval * next.prostIntervalFactor);
+      this.nextProstIn = Math.min(this.nextProstIn, EVENTS.prost.maxInterval * next.prostIntervalFactor * this.factors.prostInterval);
     }
   }
 
@@ -1136,12 +1152,27 @@ export class GameState {
     this.focus = null;
     const vomited = reason === 'vomit';
     const survived = vomited ? Math.max(0, this.stats.vomits - 1) : this.stats.vomits;
-    const score = computeScore(this.meters.promille, vomited, survived);
+    this.updateSideGoals(reason);
+    const goalsDone = this.sideGoals.filter((g) => g.done).length;
+    const score = computeScore(this.meters.promille, vomited, survived, goalsDone);
     this.result = {
+      setup: { ...this.setup },
+      sideGoals: this.sideGoals.map((g) => ({ id: g.def.id, text: g.def.text, done: g.done })),
       reason, cause, promille: this.meters.promille, score,
-      title: titleFor(score, vomited), clock: this.clock, stats: { ...this.stats },
+      title: titleFor(score, vomited), clock: this.clock, stats: { ...this.stats, drinkKinds: [...this.stats.drinkKinds] },
     };
     this.events.push({ type: 'gameEnd', reason });
+  }
+
+  /** Wiesn-Aufgaben prüfen. `reason` = null während der Runde, sonst am Ende (dann auch die End-Aufgaben) */
+  private updateSideGoals(reason: GameResult['reason'] | null): void {
+    for (const g of this.sideGoals) {
+      if (g.done || (g.def.atEnd && reason === null)) continue;
+      if (g.def.check({ stats: this.stats, promille: this.meters.promille, reason })) {
+        g.done = true;
+        this.events.push({ type: 'sideGoal', id: g.def.id, text: g.def.text });
+      }
+    }
   }
 
   private say(entityId: number, text: string): void {

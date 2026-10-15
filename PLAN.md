@@ -46,7 +46,7 @@ Beobachtung 1 („gute Spieler kotzen nie“) stimmt damit nur halb: Das Kotz-Ne
 - [x] Phasen als Konfiguration in `balance.ts` (`PHASES`), im Core über `eveningAt(hour)` abgefragt, `GameState.evening` hält die aktuelle Phase und setzt `Meters.mods`.
   - [x] 18–20 Uhr *Gemütlich*: Prost-Abstand ×1,35, Musik leise.
   - [x] 20–22 Uhr *Stimmung*: Prost-Abstand ×0,6, Wiesen-Spawn ×0,7 (Happy Hour), Musik lauter, Leber ×1,25.
-  - [x] ab 22 Uhr *Last Order*: Getränke und Prost +50 % Promille, +35 % Kotz, Musik am lautesten.
+  - [x] ab 22 Uhr *Last Order*: Getränke und Prost +50 % Promille, +35 % Kotz (seit Schritt 4: +25 %), Musik am lautesten.
   - [ ] Familien-NPCs in der ruhigen Phase (offen, braucht neue NPC-Rolle und Grafik; passt gut zu Schritt 4).
 - [x] Leber spürbar: Abbau = (0,0015 + 0,003 × ‰) pro Sekunde × Phasen-Faktor. Hoher Pegel baut schneller ab.
 - [x] Event `phaseChange` mit HUD-Banner, Phasenname über der Uhr, Konfetti und Musik-Lautstärke. Das Getränk-Event trägt jetzt die tatsächlich gewonnenen Promille (`+0,48 ‰` in der Last Order).
@@ -107,18 +107,36 @@ Hinweis: Die Musik selbst läuft nicht synchron zur Logik (sie startet mit der S
 
 Offen: Der kluge Bot kotzt mit dem Dixi wieder selten (Beobachtung 1). Das Riesenrad nutzt kein Bot, weil die Zeit zu teuer ist. Es lohnt sich vor allem für Menschen, die gerade nichts in der Nähe haben.
 
-## Schritt 5 – F: Meta und Wiederspielwert
+## Schritt 5 – F: Meta und Wiederspielwert ✅
 
-- Daily Seed (Seed aus Datum), Run-Modifier („Regenwetter“, „Trachtenumzug“).
-- Vorab-Perks (Lederhose, Magen aus Stahl, Leber) und Achievements („kotzfrei“, „5er-Prost-Combo“, „alle Sorten“) via `src/storage/` (`localStorage`, Interface ist bereits für eine Online-Variante vorbereitet).
-- Score-Nebenziele, optional Online-Highscore.
+- [x] **Tageswiesn**: Seed aus dem Datum (`dailySetup`, FNV-Hash von „JJJJ-MM-TT“), Wetter ebenfalls aus dem Seed. Eigener Tagesbestwert (nur die letzten 60 Tage werden gespeichert).
+- [x] **Run-Modifier** (`MODIFIERS` in balance.ts): Kaiserwetter, Regenwetter, Trachtenumzug, Hitzewelle. Sie wirken über `RunFactors` (Tempo, Spawns, Prost-Takt, Drift, Zusatz-NPCs, Sprudel-Abbau, Übelkeit, Wasser). Beim Regen gibt es Regentropfen und einen grauen Filter, bei der Hitzewelle einen warmen Filter.
+- [x] **Perks** (`PERKS`): Krachlederne (frei), Magen aus Stahl (Erfolg „Kotzfrei“), Leber wia a Ochs (Erfolg „Zeltkönig“). Auswahl im Menü, die Wahl wird gespeichert.
+- [x] **Erfolge** (`ACHIEVEMENTS` in `src/core/meta.ts`, 10 Stück) über `ProgressStore` (`src/storage/progress.ts`, async, `localStorage` mit Speicher-Fallback). Übersicht im Menü, neue Erfolge und freigeschaltete Perks auf dem Endscreen.
+- [x] **Score-Nebenziele**: 3 Wiesn-Aufgaben pro Runde aus einem Pool von 10, fest je Seed, je +5 % Score. Sie werden live erkannt (Einblendung) bzw. am Ende geprüft.
+- [x] `GameState` nimmt jetzt ein `RunSetup` (Seed, Wetter, Perk, Tageswiesn). `new GameState(seed)` funktioniert weiter (normales Wetter, kein Perk).
+- [x] Tests: `tests/meta.test.ts` (Tageswiesn, Determinismus, Faktoren, Aufgaben, Erfolge, Perks, Speicher). `tests/balance-setups.test.ts` prüft: kein Wetter verschiebt den Score um mehr als 25 %, kein Perk dominiert (Abstand unter 15 %).
+- [ ] Optional: Online-Highscore (`HighscoreStore`/`ProgressStore` sind dafür vorbereitet, es fehlt ein Server).
+
+| Kluger Bot (8 Seeds) | Ø Score |
+|---|---|
+| ohne Wetter/Perk | 3,03 |
+| Regen / Trachtenumzug / Hitzewelle | 3,10 / 3,24 / 2,80 |
+| Krachlederne / Magen / Leber | 3,12 / 3,11 / 3,15 |
+
+## Ideen für danach
+
+- Rülps-Duell mit einem NPC (aus Schritt 3, optional)
+- Online-Highscore und Tageswiesn-Rangliste
+- Riesenrad attraktiver machen (Bonus, z. B. „Aussicht“: zeigt kurz alle Pickups auf der Karte)
+- Beobachtung 1 bleibt teilweise: Mit Dixi-Klo kotzt der kluge Bot selten. Man könnte das Dixi-Klo an den Mischmasch koppeln oder pro Runde begrenzen.
 
 ## Arbeitsregeln
 
 - Zahlen nur in `balance.ts`, Logik nur in `src/core/`, Renderer liest nur.
 - Jede neue Mechanik: Event in `events.ts`, Test in `tests/`, README-Abschnitt „Spielmechanik in Kürze“ aktualisieren.
-- Vor jedem Commit: `npm run typecheck && npm test`. Branch: `claude/blissful-cannon-phh4ur`, Pull Request nur auf ausdrücklichen Wunsch.
+- Vor jedem Commit: `npm run typecheck && npm test`. Branch: `claude/admiring-einstein-mtqp81`, Pull Request nur auf ausdrücklichen Wunsch.
 
-## Empfohlene Reihenfolge
+## Stand
 
-Schritt 1 → 2 → 3 → 4 → 5. Schritt 1 ist klein und verhindert, dass das Balancing unbemerkt kippt. Schritt 2 gibt dem Spiel den größten Tiefgang pro Aufwand.
+Alle fünf Schritte sind umgesetzt (Branch `claude/admiring-einstein-mtqp81`).

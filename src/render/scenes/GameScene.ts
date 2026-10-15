@@ -13,7 +13,7 @@ import { ATTRACTIONS, BURP, DRUNK, EVENTS, FOODS, ROUND } from '../../config/bal
 import {
   BENCHES, BUMPER_ARENA, CAROUSEL, LIGHT_STRINGS, LUKAS, PATHS, RIESENRAD, TENT, WORLD,
 } from '../../config/world';
-import { GameState, NO_COMMAND, PLAYER_ID, type GameEvent, type Npc, type Pickup } from '../../core';
+import { GameState, NO_COMMAND, PLAYER_ID, freeSetup, type GameEvent, type Npc, type Pickup, type RunSetup } from '../../core';
 import { InputManager } from '../../input/InputManager';
 import { KeyboardInput } from '../../input/KeyboardInput';
 import { TouchInput, isTouchDevice } from '../../input/TouchInput';
@@ -81,10 +81,16 @@ export class GameScene extends Phaser.Scene {
   private burpFx!: Phaser.GameObjects.Particles.ParticleEmitter;
   private confettiFx!: Phaser.GameObjects.Particles.ParticleEmitter;
 
+  private setup: RunSetup | null = null;
+
   constructor() { super('Game'); }
 
+  init(data: { setup?: RunSetup }): void {
+    this.setup = data?.setup ?? null;
+  }
+
   create(): void {
-    this.state = new GameState();
+    this.state = new GameState(this.setup ?? freeSetup(Date.now() >>> 0));
     this.acc = 0;
     this.time0 = 0;
     this.paused = false;
@@ -275,6 +281,15 @@ export class GameScene extends Phaser.Scene {
     const { width, height } = this.scale.gameSize;
     this.night = this.add.rectangle(width / 2, height / 2, width * 2, height * 2, 0x0b1640, 0)
       .setScrollFactor(0).setDepth(DEPTH.night);
+    // Wetter: Regen grau-blau mit Tropfen, Hitzewelle warm
+    const mod = this.state.setup.modifier;
+    this.add.rectangle(width / 2, height / 2, width * 2, height * 2,
+      mod === 'regen' ? 0x40506a : 0xff9a3c, mod === 'regen' ? 0.18 : mod === 'hitzewelle' ? 0.1 : 0)
+      .setScrollFactor(0).setDepth(DEPTH.night - 1);
+    if (mod === 'regen') this.add.particles(0, 0, 'px', {
+      x: { min: -100, max: width + 100 }, y: -20, lifespan: 900, speedY: { min: 700, max: 900 }, speedX: -120,
+      scaleX: 0.5, scaleY: { min: 5, max: 9 }, alpha: { start: 0.55, end: 0.2 }, tint: 0xbfd6ff, frequency: 8, quantity: 3,
+    }).setScrollFactor(0).setDepth(DEPTH.lights + 2);
   }
 
   private makeFigure(texture: TextureKey, x: number, y: number): FigureView {
@@ -762,6 +777,10 @@ export class GameScene extends Phaser.Scene {
         break;
       }
       case 'npcDown':
+        break;
+      case 'sideGoal':
+        audio.play('win', { volume: 0.4, rate: 1.3 });
+        this.floatText(pp.x, pp.y - 150, `Aufgabe: ${e.text} ✅`, '#8cff7a', 26);
         break;
       case 'carouselEnter':
         audio.play('whoosh');

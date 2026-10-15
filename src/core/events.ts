@@ -58,7 +58,9 @@ export type GameEvent =
   /** NPC hat das Fest verlassen (Renderer entfernt die Figur) */
   | { type: 'npcGone'; npcId: number }
   /** Das Lebkuchenherz hat vor dem Sanka gerettet */
-  | { type: 'heartSaved'; pos: Vec2 };
+  | { type: 'heartSaved'; pos: Vec2 }
+  /** Eine Wiesn-Aufgabe ist erfüllt */
+  | { type: 'sideGoal'; id: string; text: string };
 
 export class EventQueue {
   private items: GameEvent[] = [];

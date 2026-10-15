@@ -444,6 +444,102 @@ export const VOMIT = {
 };
 
 // ---------------------------------------------------------------------------
+// Meta: Run-Modifier (Wetter & Anlass) und Perks
+// ---------------------------------------------------------------------------
+
+/** Faktoren, die eine Runde verändern (1 = unverändert, `driftBonus` additiv) */
+export interface RunFactors {
+  /** Laufgeschwindigkeit */
+  speed: number;
+  /** Spawn-Intervall der Wiesen-Pickups (< 1 = mehr) */
+  fieldSpawnInterval: number;
+  /** Abstand zwischen "Prost!"-Rufen (< 1 = öfter) */
+  prostInterval: number;
+  /** Zusätzliche Drift der Steuerung (Anteil der Laufgeschwindigkeit) */
+  driftBonus: number;
+  /** Zusätzliche Besucher und Bedienungen */
+  extraVisitors: number;
+  extraWaitresses: number;
+  /** Sprudel-Abbau pro Sekunde */
+  sprudelDecay: number;
+  /** Passiver Kotz durch den Rausch */
+  passiveKotz: number;
+  /** Kotz aus Getränken */
+  drinkKotz: number;
+  /** Promille aus Getränken */
+  drinkPromille: number;
+  /** Promille-Abbau (Leber) */
+  liver: number;
+  /** Häufigkeit von Wasser als Wiesen-Pickup */
+  wasserWeight: number;
+  /** Wirkung von Remplern und Security-Schubsern (Promille-Verlust, Schubs) */
+  shove: number;
+}
+
+export const NO_FACTORS: RunFactors = {
+  speed: 1, fieldSpawnInterval: 1, prostInterval: 1, driftBonus: 0, extraVisitors: 0, extraWaitresses: 0,
+  sprudelDecay: 1, passiveKotz: 1, drinkKotz: 1, drinkPromille: 1, liver: 1, wasserWeight: 1, shove: 1,
+};
+
+export type ModifierId = 'normal' | 'regen' | 'trachtenumzug' | 'hitzewelle';
+
+export interface ModifierConfig {
+  id: ModifierId;
+  name: string;
+  /** Kurzbeschreibung für Menü und Start-Banner */
+  desc: string;
+  icon: string;
+  factors: Partial<RunFactors>;
+  /** Gewicht bei der zufälligen Auswahl (freies Spiel und Tageswiesn) */
+  weight: number;
+}
+
+export const MODIFIERS: Record<ModifierId, ModifierConfig> = {
+  normal: { id: 'normal', name: 'Kaiserwetter', icon: '☀️', desc: 'A ganz normaler, scheener Wiesn-Tag.', factors: {}, weight: 3 },
+  regen: {
+    id: 'regen', name: 'Regenwetter', icon: '🌧️', desc: 'Matsch: langsamer und rutschig, weniger auf der Wiese, alle drängen ins Zelt (mehr Prost).',
+    factors: { speed: 0.9, driftBonus: 0.12, fieldSpawnInterval: 1.4, prostInterval: 0.8 }, weight: 1,
+  },
+  trachtenumzug: {
+    id: 'trachtenumzug', name: 'Trachtenumzug', icon: '🎺', desc: 'Volle Wiesn: mehr Leut, mehr Bedienungen, mehr Prost – und mehr Gedränge.',
+    factors: { extraVisitors: 10, extraWaitresses: 3, prostInterval: 0.85 }, weight: 1,
+  },
+  hitzewelle: {
+    id: 'hitzewelle', name: 'Hitzewelle', icon: '🔥', desc: 'Der Sprudel baut langsamer ab und der Rausch schlägt mehr auf den Magen – zum Glück gibt\'s viel Wasser.',
+    factors: { sprudelDecay: 0.75, passiveKotz: 1.15, wasserWeight: 2.5 }, weight: 1,
+  },
+};
+
+export type PerkId = 'lederhose' | 'magen' | 'leber';
+
+export interface PerkConfig {
+  id: PerkId;
+  name: string;
+  desc: string;
+  icon: string;
+  factors: Partial<RunFactors>;
+}
+
+/** Ein Perk pro Runde. Freischaltung über Erfolge, siehe `src/core/meta.ts` */
+export const PERKS: Record<PerkId, PerkConfig> = {
+  lederhose: {
+    id: 'lederhose', name: 'Krachlederne', icon: '🩳', desc: 'Rempler und Security bringen di kaum aus der Ruhe (halbe Wirkung).',
+    factors: { shove: 0.5 },
+  },
+  magen: {
+    id: 'magen', name: 'Magen aus Stahl', icon: '🛡️', desc: 'Getränke gehen 15 % weniger auf den Magen, bringen aber 5 % weniger Promille.',
+    factors: { drinkKotz: 0.85, drinkPromille: 0.95 },
+  },
+  leber: {
+    id: 'leber', name: 'Leber wia a Ochs', icon: '🐂', desc: 'Promille bauen 40 % langsamer ab, dafür ist dir 10 % schneller schlecht.',
+    factors: { liver: 0.6, passiveKotz: 1.1 },
+  },
+};
+
+/** Wiesn-Aufgaben: so viele pro Runde, jede erfüllte gibt diesen Score-Bonus (multiplikativ addiert) */
+export const SIDE_GOALS = { perRound: 3, bonusEach: 0.05 };
+
+// ---------------------------------------------------------------------------
 // Scoring & Titel
 // ---------------------------------------------------------------------------
 

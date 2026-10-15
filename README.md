@@ -21,7 +21,7 @@ Gebaut mit **Vite + TypeScript + Phaser 3 + Howler.js**. Das Ergebnis ist eine s
 ## Spielmechanik in Kürze
 
 - **Promille** = Score. Steigt mit Alkohol. Die **Leber** baut ab, und zwar umso schneller, je höher der Pegel ist. Wer früh vollgas gibt, verliert mehr.
-- **Der Abend hat drei Phasen**: *Gemütlich* (18–20 Uhr, wenig „Prost!“, leise Musik), *Stimmung* (20–22 Uhr, viel öfter „Prost!“, mehr Nachschub auf der Wiese, die Leber macht Überstunden), *Last Order* (ab 22 Uhr: Getränke bringen +50 % Promille, aber auch 35 % mehr Kotz). Ein Endspurt lohnt sich, die Phase steht im HUD über der Uhr.
+- **Der Abend hat drei Phasen**: *Gemütlich* (18–20 Uhr, wenig „Prost!“, leise Musik), *Stimmung* (20–22 Uhr, viel öfter „Prost!“, mehr Nachschub auf der Wiese, die Leber macht Überstunden), *Last Order* (ab 22 Uhr: Getränke bringen +50 % Promille, aber auch 25 % mehr Kotz). Ein Endspurt lohnt sich, die Phase steht im HUD über der Uhr.
 - **Kotzleiste** (0–100): bei 100 wird gekotzt. Steigt passiv mit dem Rausch, durch Getränke, Karussell und Autoscooter.
 - **Sprudel-Druck** (0–100): Kohlensäure. Über 80 steigt die Kotzleiste pro Sekunde, bei 100 kotzt man sofort. Rülpsen hilft.
 - **Mischmasch-Meter** (0–100): verschiedene Sorten innerhalb von 30 s. Ab 50 steigt die Kotzleiste doppelt so schnell, bei 100 kotzt man sofort.
@@ -34,6 +34,12 @@ Gebaut mit **Vite + TypeScript + Phaser 3 + Howler.js**. Das Ergebnis ist eine s
   - **Riesenrad** (unten links): 10 s Fahrt, Kotz sinkt um 3,5 pro Sekunde. In der Zeit trinkt man nichts.
   - **Hau den Lukas** (zwischen Zelt und Autoscooter): E drücken, wenn die Nadel oben ist. Betrunken läuft sie schneller. Ab 70 % gibt es eine Freimaß, bei der Glocke (92 %) ein **Lebkuchenherz**, das einmal vor dem Sanka rettet.
   - **NPCs**: Familien gehen um 20 Uhr heim. Ab 20 Uhr torkeln **Rempler** herum, die einem Bier verschütten (−0,05 ‰). **Bierleichen** liegen im Weg. Die **Security** schiebt einen ab 2,2 ‰ aus dem Biergarten.
+- **Meta und Wiederspielwert**:
+  - **Tageswiesn** (📅-Button oder T): Seed und Wetter hängen am Datum, alle spielen am selben Tag dieselbe Runde. Der Tagesbestwert wird gespeichert.
+  - **Wetter** (zufällig im freien Spiel): ☀️ Kaiserwetter, 🌧️ Regen (langsamer und rutschig, mehr Prost), 🎺 Trachtenumzug (mehr Leute und Bedienungen), 🔥 Hitzewelle (Sprudel baut langsamer ab, mehr Wasser).
+  - **Perks** (Menü, ←/→): 🩳 Krachlederne (Rempler und Security halb so wirksam), 🛡️ Magen aus Stahl (−15 % Kotz aus Getränken, −5 % Promille), 🐂 Leber wia a Ochs (−40 % Abbau, +10 % Übelkeit). Die letzten beiden werden über Erfolge freigeschaltet.
+  - **Wiesn-Aufgaben**: drei Nebenziele pro Runde (z. B. „3× Prost im Takt“, „Kotzfrei bis 23:00“), jede erfüllte gibt +5 % Score.
+  - **10 Erfolge** (Menü, A), gespeichert im Browser (`src/storage/progress.ts`, asynchrone Schnittstelle für eine spätere Online-Variante).
 - **Getränke haben Rollen**: Maß = solide Basis, Radler = mild, Weißbier/Sekt = viel Sprudel, **Obstler** = Sprudel runter, aber der Kotz kommt verzögert, **Sekt** = „Prost!“ zählt 25 s lang doppelt, **Jägermeister** = Mischmasch-Spike, dafür 6 s Tempo-Kick.
 - **Essen hat Rollen**: Brezn = billige Unterlage, **Hendl** = größte Magenfüllung (macht kurz träge), **Steckerlfisch** = Unterlage + baut Mischmasch ab, **Wasser** = Soforthilfe gegen Kotz und Sprudel, kostet etwas Promille.
 - **Gags**: Karussell dreht dich (und deinen Magen), ab 1,5 ‰ driftet die Steuerung, ab 2,5 ‰ ist sie gelegentlich vertauscht, Bildschirmwackeln und Doppeltsehen, „Prost!“-Events, Sprechblasen, Sanka-Abholung.
@@ -57,7 +63,7 @@ npm run typecheck  # TypeScript prüfen
 npm run gen:audio  # Sounds & Blasmusik neu synthetisieren → public/assets/audio
 ```
 
-**Balance-Bots** (`tests/balance.test.ts`, Strategien in `tests/support/bots.ts`): Sechs Bots (nur Maß, gierig, wahllos, klug, klug mit Endspurt, klug ohne Gefühl für Sweet-Spot und Takt) spielen je 20 komplette Runden über `GameState`. Die Tests prüfen z. B., dass kluges Spiel Maß-Spam deutlich schlägt, Spam fast immer im Sanka endet, sich der Endspurt lohnt und Gefühl beim Rülpsen und Prosten belohnt wird. Wer `balance.ts` ändert und hier Rot sieht, hat das Balancing gekippt. Mehr Runden für eine genauere Auswertung: `BALANCE_SEEDS=60 npm test`.
+**Balance-Bots** (`tests/balance.test.ts` und `tests/balance-setups.test.ts` für Wetter und Perks, Strategien in `tests/support/bots.ts`): Sechs Bots (nur Maß, gierig, wahllos, klug, klug mit Endspurt, klug ohne Gefühl für Sweet-Spot und Takt) spielen je 20 komplette Runden über `GameState`. Die Tests prüfen z. B., dass kluges Spiel Maß-Spam deutlich schlägt, Spam fast immer im Sanka endet, sich der Endspurt lohnt und Gefühl beim Rülpsen und Prosten belohnt wird. Wer `balance.ts` ändert und hier Rot sieht, hat das Balancing gekippt. Mehr Runden für eine genauere Auswertung: `BALANCE_SEEDS=60 npm test`.
 
 ## Build
 

@@ -10,6 +10,7 @@ import { BURP, DRINKS, NPC_BEHAVIOR, ROUND, type DrinkId, type FoodId } from '..
 import { BIERGARTEN } from '../../src/config/world';
 import { GameState, type PlayerCommand } from '../../src/core/GameState';
 import type { GameResult } from '../../src/core/entities';
+import type { RunSetup } from '../../src/core/meta';
 import type { Meters } from '../../src/core/Meters';
 import { Rng, dist, normalize, pointInRect, type Vec2 } from '../../src/core/math';
 
@@ -184,8 +185,8 @@ export class Bot {
 }
 
 /** Spielt eine komplette Runde mit einer Strategie. */
-export function playRound(strategy: Strategy, seed: number): GameResult {
-  const g = new GameState(seed);
+export function playRound(strategy: Strategy, seed: number, setup: Partial<RunSetup> = {}): GameResult {
+  const g = new GameState({ ...setup, seed });
   const bot = new Bot(strategy, seed);
   const dt = ROUND.fixedStep;
   const maxSteps = Math.ceil(ROUND.durationSeconds / dt) + 10;
@@ -301,8 +302,8 @@ export interface RunSummary {
   avgDrinks: number;
 }
 
-export function summarize(strategy: Strategy, seeds: readonly number[]): RunSummary {
-  const results = seeds.map((s) => playRound(strategy, s));
+export function summarize(strategy: Strategy, seeds: readonly number[], setup: Partial<RunSetup> = {}): RunSummary {
+  const results = seeds.map((s) => playRound(strategy, s, setup));
   const avg = (f: (r: GameResult) => number) => results.reduce((s, r) => s + f(r), 0) / results.length;
   return {
     strategy: strategy.name,

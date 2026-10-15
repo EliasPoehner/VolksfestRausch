@@ -5,6 +5,7 @@
 import type { DrinkId, FoodId } from '../config/balance';
 import type { BoothKind } from '../config/world';
 import type { Rect, Vec2 } from './math';
+import type { RunSetup } from './meta';
 
 /** ID 0 ist immer der Spieler (z. B. für Sprechblasen). */
 export const PLAYER_ID = 0;
@@ -193,9 +194,15 @@ export interface GameStats {
   securityPushes: number;
   /** Lebkuchenherz hat vor dem Sanka gerettet */
   heartSaves: number;
+  /** Welche Getränkesorten getrunken wurden */
+  drinkKinds: DrinkId[];
 }
 
 export interface GameResult {
+  /** Wie die Runde aufgesetzt war (Seed, Wetter, Perk, Tageswiesn) */
+  setup: RunSetup;
+  /** Wiesn-Aufgaben dieser Runde */
+  sideGoals: { id: string; text: string; done: boolean }[];
   reason: 'vomit' | 'zapfenstreich';
   cause?: 'kotz' | 'sprudel' | 'misch';
   promille: number;

@@ -7,7 +7,7 @@
  *  - misch:    0–100. Verschiedene Sorten in 30 s; ≥50 verdoppelt Kotz-Anstieg, 100 = sofort kotzen.
  *  - magen:    0–100. Magenfüllung durch Essen. Dämpft Kotz und Alkoholaufnahme, wird verdaut.
  */
-import { BURP, DRINKS, FOODS, METERS, VOMIT, type DrinkId, type FoodId } from '../config/balance';
+import { BURP, DRINKS, FOODS, METERS, NO_FACTORS, VOMIT, type DrinkId, type FoodId, type RunFactors } from '../config/balance';
 import { clamp } from './math';
 import type { VomitCause } from './events';
 
@@ -45,6 +45,8 @@ export class Meters {
 
   /** Wird von GameState beim Phasenwechsel gesetzt */
   mods: PhaseMods = { promille: 1, kotz: 1, liver: 1 };
+  /** Wetter und Perk der Runde (von GameState gesetzt) */
+  run: RunFactors = { ...NO_FACTORS };
 
   /** Letzte Getränke (für Mischmasch-Fenster) */
   private log: DrinkLogEntry[] = [];
@@ -74,7 +76,7 @@ export class Meters {
   drink(id: DrinkId, now: number): number {
     const d = DRINKS[id];
     const absorb = 1 - METERS.magen.absorptionSlowAtFull * (this.magen / METERS.magen.max);
-    const gained = d.promille * absorb * this.mods.promille;
+    const gained = d.promille * absorb * this.mods.promille * this.run.drinkPromille;
     this.promille += gained;
     this.sprudel = clamp(this.sprudel + d.sprudel, 0, METERS.sprudel.max);
 
@@ -88,7 +90,7 @@ export class Meters {
     );
     this.log.push({ drink: id, time: now });
 
-    const kotzFactor = this.stomachFactor * this.mods.kotz;
+    const kotzFactor = this.stomachFactor * this.mods.kotz * this.run.drinkKotz;
     this.addKotz(d.kotz * kotzFactor);
     if (d.kotzDelayed) this.pendingKotz += d.kotzDelayed * kotzFactor;
     return gained;
@@ -96,10 +98,10 @@ export class Meters {
 
   /** Bonus-Schluck beim "Prost!"-Event (kein eigenes Getränk im Mischmasch-Sinn) */
   prost(promille: number, sprudel: number, kotz: number): number {
-    const gained = promille * this.mods.promille;
+    const gained = promille * this.mods.promille * this.run.drinkPromille;
     this.promille += gained;
     this.sprudel = clamp(this.sprudel + sprudel, 0, METERS.sprudel.max);
-    this.addKotz(kotz * this.mods.kotz);
+    this.addKotz(kotz * this.mods.kotz * this.run.drinkKotz);
     return gained;
   }
 
@@ -155,9 +157,9 @@ export class Meters {
 
   /** Zeitbasiertes Update (Abbau, passive Anstiege). */
   update(dt: number): void {
-    const liver = (METERS.promille.decayPerSecond + METERS.promille.decayPerPromillePerSecond * this.promille) * this.mods.liver;
+    const liver = (METERS.promille.decayPerSecond + METERS.promille.decayPerPromillePerSecond * this.promille) * this.mods.liver * this.run.liver;
     this.promille = Math.max(0, this.promille - liver * dt);
-    this.sprudel = Math.max(0, this.sprudel - METERS.sprudel.decayPerSecond * dt);
+    this.sprudel = Math.max(0, this.sprudel - METERS.sprudel.decayPerSecond * this.run.sprudelDecay * dt);
     this.misch = Math.max(0, this.misch - METERS.misch.decayPerSecond * dt);
     this.magen = Math.max(0, this.magen - METERS.magen.decayPerSecond * dt);
     this.emptyStomach = Math.max(0, this.emptyStomach - dt);
@@ -170,7 +172,7 @@ export class Meters {
     }
 
     // Passiver Kotz-Anstieg durch den Rausch (voller Magen dämpft)
-    this.addKotz(this.promille * METERS.kotz.passivePerPromillePerSecond * this.stomachFactor * dt);
+    this.addKotz(this.promille * METERS.kotz.passivePerPromillePerSecond * this.stomachFactor * this.run.passiveKotz * dt);
     // Zu viel Druck im Bauch
     if (this.sprudel > METERS.sprudel.dangerThreshold) {
       this.addKotz(METERS.sprudel.kotzPerSecondAboveDanger * dt);

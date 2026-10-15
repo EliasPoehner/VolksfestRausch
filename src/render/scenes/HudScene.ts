@@ -3,7 +3,7 @@
  * Doppeltsehen nicht auf die Anzeigen.
  */
 import Phaser from 'phaser';
-import { EVENTS, METERS, PHASES } from '../../config/balance';
+import { EVENTS, METERS, MODIFIERS, PERKS, PHASES } from '../../config/balance';
 import { formatPromille, type GameEvent } from '../../core';
 import { audio } from '../../audio/AudioManager';
 import type { GameScene } from './GameScene';
@@ -25,6 +25,7 @@ export class HudScene extends Phaser.Scene {
   private alertText!: Phaser.GameObjects.Text;
   private prostText!: Phaser.GameObjects.Text;
   private flashText!: Phaser.GameObjects.Text;
+  private goalsText!: Phaser.GameObjects.Text;
   private pauseLayer!: Phaser.GameObjects.Container;
   private muteIcon!: Phaser.GameObjects.Text;
   private bars!: { kotz: Bar; sprudel: Bar; misch: Bar; magen: Bar };
@@ -72,6 +73,18 @@ export class HudScene extends Phaser.Scene {
     this.alertText = this.add.text(W / 2, 112, '', textStyle(26, '#ff8ad8')).setOrigin(0.5, 0);
     this.prostText = this.add.text(W / 2, H * 0.3, '', textStyle(44, COLORS.gold, { strokeThickness: 8, align: 'center' })).setOrigin(0.5);
     this.flashText = this.add.text(W / 2, H * 0.42, '', textStyle(54, COLORS.cream, { strokeThickness: 9, align: 'center' })).setOrigin(0.5).setAlpha(0);
+
+    // Wiesn-Aufgaben (rechts unter Ton/Pause)
+    this.goalsText = this.add.text(W - 16, 142, '', textStyle(15, COLORS.cream, { strokeThickness: 4, align: 'right', lineSpacing: 2 })).setOrigin(1, 0);
+
+    // Start-Banner: Wetter, Perk, Tageswiesn
+    const st = this.game_.state;
+    if (st) {
+      const mod = MODIFIERS[st.setup.modifier];
+      const lines = [st.setup.daily ? '📅 Tageswiesn' : '', st.setup.modifier !== 'normal' ? `${mod.icon} ${mod.name}` : '',
+        st.setup.perk ? `${PERKS[st.setup.perk].icon} ${PERKS[st.setup.perk].name}` : ''].filter(Boolean);
+      if (lines.length) this.time.delayedCall(400, () => this.flash(lines.join('  ·  ')));
+    }
 
     // Ton & Pause (auch für Touch)
     this.muteIcon = this.add.text(W - 26, 100, audio.muted ? '🔇' : '🔊', { fontSize: '30px' }).setOrigin(1, 0).setInteractive({ useHandCursor: true });
@@ -135,6 +148,9 @@ export class HudScene extends Phaser.Scene {
     ].filter(Boolean).join('  ');
     this.statusText.setText(`🍺 ${s.stats.drinks}   💨 ${s.stats.burps}   ·   ${burp}   ·   Sanka-Karte: ${lives}${buffs ? '   ·   ' + buffs : ''}`);
     this.statusText.setColor(p.burpCooldown > 0 ? '#cfd8e3' : '#8fd3ff');
+
+    // Wiesn-Aufgaben
+    this.goalsText.setText(['Wiesn-Aufgaben:', ...s.sideGoals.map((g) => `${g.done ? '✅' : '⬜'} ${g.def.text}`)].join('\n'));
 
     // Hinweise
     let alert = '';
