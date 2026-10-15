@@ -47,6 +47,10 @@ describe('Balance-Bots', () => {
     expect(r.lastOrder.sankaRate).toBeLessThanOrEqual(0.15);
   });
 
+  it('Gefühl zahlt sich aus: Sweet-Spot-Rülpser und Prost im Takt schlagen Antippen und Sofort-Drücken', () => {
+    expect(r.smart.avgScore).toBeGreaterThan(r.clumsy.avgScore * 1.05);
+  });
+
   it('Maß-Spam endet fast immer im Sanka', () => {
     expect(r.spam.sankaRate).toBeGreaterThan(0.8);
   });

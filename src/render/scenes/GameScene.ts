@@ -9,7 +9,7 @@
  * Für eine Three.js-Version wird genau diese Datei (plus HudScene) ersetzt.
  */
 import Phaser from 'phaser';
-import { DRUNK, FOODS, ROUND } from '../../config/balance';
+import { BURP, DRUNK, EVENTS, FOODS, ROUND } from '../../config/balance';
 import {
   BENCHES, BUMPER_ARENA, CAROUSEL, LIGHT_STRINGS, PATHS, TENT, WORLD,
 } from '../../config/world';
@@ -61,6 +61,7 @@ export class GameScene extends Phaser.Scene {
   private focusLabel!: Phaser.GameObjects.Text;
   private prostMark!: Phaser.GameObjects.Text;
   private prostRing!: Phaser.GameObjects.Graphics;
+  private burpMeter!: Phaser.GameObjects.Graphics;
   private night!: Phaser.GameObjects.Rectangle;
   private bulbs: { img: Phaser.GameObjects.Image; phase: number }[] = [];
   private ghostCam!: Phaser.Cameras.Scene2D.Camera;
@@ -245,6 +246,7 @@ export class GameScene extends Phaser.Scene {
     this.focusLabel = this.add.text(0, 0, '', textStyle(20)).setOrigin(0.5, 1).setDepth(DEPTH.ui).setVisible(false);
     this.prostMark = this.add.text(0, 0, 'PROST!', textStyle(36, COLORS.gold, { strokeThickness: 7 })).setOrigin(0.5, 1).setDepth(DEPTH.ui).setVisible(false);
     this.prostRing = this.add.graphics().setDepth(DEPTH.ui);
+    this.burpMeter = this.add.graphics().setDepth(DEPTH.ui);
   }
 
   private addNpcView(n: Npc): void {
@@ -438,6 +440,22 @@ export class GameScene extends Phaser.Scene {
     return (pk.kind === 'drink' ? `drink_${pk.drink}` : `food_${pk.food}`) as TextureKey;
   }
 
+  /** Ladebalken über dem Kopf, solange R gehalten wird; der grüne Bereich ist der Sweet-Spot */
+  private renderBurpMeter(): void {
+    const g = this.burpMeter;
+    g.clear();
+    const p = this.state.player;
+    if (!p.burpCharging || this.ending) return;
+    const w = 90, h = 12, x = p.pos.x - w / 2, y = p.pos.y - 112;
+    const max = BURP.autoReleaseAt;
+    g.fillStyle(0x000000, 0.6).fillRoundedRect(x - 3, y - 3, w + 6, h + 6, 6);
+    g.fillStyle(0x7ed957, 0.55).fillRect(x + (w * BURP.sweetStart) / max, y, (w * (BURP.sweetEnd - BURP.sweetStart)) / max, h);
+    const f = Math.min(1, p.burpCharge / max);
+    const color = p.burpCharge < BURP.sweetStart ? 0x8fd3ff : p.burpCharge <= BURP.sweetEnd ? 0x7ed957 : 0xff5a4f;
+    g.fillStyle(color, 1).fillRect(x, y + 3, w * f, h - 6);
+    g.lineStyle(2, 0xffffff, 0.9).strokeRoundedRect(x - 3, y - 3, w + 6, h + 6, 6);
+  }
+
   private renderFocus(t: number): void {
     const s = this.state;
     const f = s.focus;
@@ -445,14 +463,21 @@ export class GameScene extends Phaser.Scene {
 
     this.prostRing.clear();
     if (prostNpc) {
+      // Takt-Puls: springt auf jedem Schlag der Blasmusik, im Takt-Fenster wird der Ring grün
+      const period = 60 / EVENTS.prost.beatBpm;
+      const pulse = Math.exp(-((s.prost.elapsed % period) / period) * 5);
+      const onBeat = s.prostOnBeat;
       this.prostMark.setVisible(true).setPosition(prostNpc.pos.x, prostNpc.pos.y - 70 + Math.sin(t * 12) * 4)
-        .setScale(1 + Math.sin(t * 10) * 0.08);
-      const frac = s.prost.timeLeft / 3;
-      this.prostRing.lineStyle(6, 0xffd23f, 1);
+        .setScale(1 + pulse * 0.25);
+      const frac = s.prost.timeLeft / EVENTS.prost.windowSeconds;
+      this.prostRing.lineStyle(6, onBeat ? 0x7ed957 : 0xffd23f, 1);
       this.prostRing.beginPath();
       this.prostRing.arc(prostNpc.pos.x, prostNpc.pos.y - 24, 34, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac);
       this.prostRing.strokePath();
+      this.prostRing.lineStyle(3, onBeat ? 0x7ed957 : 0xffffff, pulse * 0.8);
+      this.prostRing.strokeCircle(prostNpc.pos.x, prostNpc.pos.y - 24, 34 + (1 - pulse) * 26);
     } else this.prostMark.setVisible(false);
+    this.renderBurpMeter();
 
     if (f && f.type !== 'prost' && !this.ending) {
       const verb = this.touch ? '🍺' : 'E:';
@@ -568,11 +593,13 @@ export class GameScene extends Phaser.Scene {
         this.floatText(e.pos.x, e.pos.y - 70, `${FOODS[e.food].name}! Magen +${FOODS[e.food].magen}`, COLORS.vomit, 22);
         break;
       case 'burp': {
-        audio.play(e.failed ? 'burpFail' : 'burp', { rate: Phaser.Math.FloatBetween(0.85, 1.2) });
+        const perfect = e.quality === 'perfect';
+        audio.play(e.failed ? 'burpFail' : 'burp', { rate: perfect ? 0.8 : Phaser.Math.FloatBetween(0.95, 1.25), volume: e.quality === 'weak' && !e.failed ? 0.5 : undefined });
         const dir = this.playerView.body.flipX ? -1 : 1;
-        this.burpFx.explode(14, e.pos.x + dir * 20, e.pos.y - 40);
-        this.cameras.main.shake(200, 0.004);
-        this.floatText(e.pos.x, e.pos.y - 100, e.failed ? 'Ups…' : 'BÖÖRP!', e.failed ? COLORS.vomit : '#ffffff', 36);
+        this.burpFx.explode(perfect ? 26 : e.quality === 'weak' ? 6 : 14, e.pos.x + dir * 20, e.pos.y - 40);
+        this.cameras.main.shake(perfect ? 320 : 200, perfect ? 0.008 : 0.004);
+        const label = e.failed ? (e.quality === 'over' ? 'Zu lang… Ups!' : 'Ups…') : perfect ? 'PERFEKT! BÖÖÖRP!' : 'pffft…';
+        this.floatText(e.pos.x, e.pos.y - 100, label, e.failed ? COLORS.vomit : perfect ? COLORS.gold : '#cfd8e3', perfect ? 40 : 30);
         break;
       }
       case 'burpCooldown':
@@ -587,8 +614,14 @@ export class GameScene extends Phaser.Scene {
       case 'prostStart':
         audio.play('prost');
         break;
+      case 'prostBeat':
+        audio.play('clink', { rate: e.n % 2 ? 1.25 : 1.05, volume: 0.25 });
+        break;
       case 'prostEnd':
-        if (e.joined) this.confettiFx.explode(30, pp.x, pp.y - 40);
+        if (e.joined) this.confettiFx.explode(e.onBeat ? 30 + e.combo * 15 : 30, pp.x, pp.y - 40);
+        if (e.onBeat) this.floatText(pp.x, pp.y - 130, e.combo > 1 ? `Im Takt! Combo ×${e.combo}` : 'Im Takt!', '#7ed957', 30);
+        break;
+      case 'burpChargeStart':
         break;
       case 'carouselEnter':
         audio.play('whoosh');

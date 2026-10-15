@@ -26,6 +26,10 @@ export interface Player {
   spin: number;
   /** Rülps-Cooldown (s) */
   burpCooldown: number;
+  /** Lädt gerade einen Rülpser auf (R gehalten)? */
+  burpCharging: boolean;
+  /** Wie lange schon aufgeladen wird (s) */
+  burpCharge: number;
   /** Jäger-Kick: verbleibende Tempo-Boost-Dauer (s) */
   boostTimer: number;
   /** Sekt-Laune: ein "Prost!" zählt doppelt, solange > 0 (s) */
@@ -112,6 +116,8 @@ export interface ProstState {
   active: boolean;
   npcId: number;
   timeLeft: number;
+  /** Seit Beginn des Prost-Rufs (s) – daraus ergibt sich der Takt */
+  elapsed: number;
 }
 
 export interface GameStats {
@@ -119,7 +125,13 @@ export interface GameStats {
   foods: number;
   burps: number;
   failedBurps: number;
+  /** Rülpser im Sweet-Spot */
+  perfectBurps: number;
   prosts: number;
+  /** "Prost!" im Takt der Blasmusik */
+  prostsOnBeat: number;
+  /** Längste Prost-Combo (im Takt in Folge) */
+  maxProstCombo: number;
   maxPromille: number;
   /** Wie oft gekotzt wurde (inkl. dem letzten, falls der Sanka kam) */
   vomits: number;

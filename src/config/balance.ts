@@ -212,12 +212,26 @@ export const METERS = {
 
 export const BURP = {
   cooldownSeconds: 5,
-  /** Sprudel-Abbau pro Rülpser */
+  /** Sprudel-Abbau eines voll geladenen (perfekten) Rülpsers ohne Bonus */
   sprudelRelief: 35,
-  /** Wahrscheinlichkeit für einen Fehlrülpser */
+  /** Chance auf einen Fehlrülpser bei zu kurz geladenem Rülpser */
   failChance: 0.1,
   /** Kotz-Anstieg bei Fehlrülpser */
   failKotz: 7,
+  /** Aufladen (R halten): ab hier beginnt der Sweet-Spot (s) … */
+  sweetStart: 0.6,
+  /** … und hier endet er (s). Länger halten = Fehlrülpser */
+  sweetEnd: 0.9,
+  /** So lange kann man höchstens halten, dann platzt er von selbst (als Fehlrülpser) */
+  autoReleaseAt: 1.5,
+  /** Zu früh losgelassen: Wirkung wächst von diesem Anteil bis 100 % am Sweet-Spot-Beginn */
+  weakMinFactor: 0.35,
+  /** Im Sweet-Spot: Sprudel-Abbau × diesem Faktor und kein Fehlrülpser */
+  perfectFactor: 1.3,
+  /** Im Sweet-Spot: zusätzlich so viel weniger Kotz */
+  perfectKotzRelief: 4,
+  /** Zu spät: nur dieser Anteil des Sprudel-Abbaus, und es ist immer ein Fehlrülpser */
+  overReliefFactor: 0.5,
 };
 
 // ---------------------------------------------------------------------------
@@ -233,6 +247,8 @@ export const PLAYER = {
   slowFactor: 0.45,
   /** Geschwindigkeitsfaktor während Jäger-Kick */
   boostFactor: 1.3,
+  /** Geschwindigkeitsfaktor, während man einen Rülpser auflädt */
+  burpChargeFactor: 0.7,
 };
 
 // ---------------------------------------------------------------------------
@@ -312,6 +328,16 @@ export const EVENTS = {
     bonusPromille: 0.2,
     sprudel: 12,
     kotz: 3,
+    /** Takt der Blasmusik (Schläge pro Minute) – "Prost!" im Takt gibt Bonus */
+    beatBpm: 132,
+    /** So weit (s) darf man neben einem Schlag liegen und ist trotzdem "im Takt" */
+    beatTolerance: 0.1,
+    /** Im Takt mitgetrunken: Promille-Bonus × diesem Faktor */
+    onBeatFactor: 1.5,
+    /** Jedes weitere "Prost!" im Takt in Folge erhöht den Bonus um diesen Anteil … */
+    comboStep: 0.25,
+    /** … bis höchstens zu dieser Combo-Stufe */
+    comboMax: 4,
   },
   /** Zufällige Sprechblasen von NPCs: Intervall (s) */
   npcChatterMin: 2.5,

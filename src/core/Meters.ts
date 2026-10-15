@@ -11,6 +11,15 @@ import { BURP, DRINKS, FOODS, METERS, VOMIT, type DrinkId, type FoodId } from '.
 import { clamp } from './math';
 import type { VomitCause } from './events';
 
+export type BurpQuality = 'weak' | 'perfect' | 'over';
+
+/** Qualität eines Rülpsers je nach Ladezeit (s) */
+export function burpQuality(charge: number): BurpQuality {
+  if (charge < BURP.sweetStart) return 'weak';
+  if (charge <= BURP.sweetEnd) return 'perfect';
+  return 'over';
+}
+
 export interface DrinkLogEntry { drink: DrinkId; time: number }
 
 /** Modifikatoren der aktuellen Abend-Phase (siehe `PHASES` in balance.ts) */
@@ -120,14 +129,28 @@ export class Meters {
   }
 
   /**
-   * Rülpsen. `roll` ist eine Zufallszahl 0..1 (von außen, damit testbar).
-   * @returns true bei Fehlrülpser
+   * Rülpsen nach dem Aufladen.
+   * @param roll Zufallszahl 0..1 (von außen, damit testbar)
+   * @param charge wie lange R gehalten wurde (s)
+   * @returns Qualität und ob es ein Fehlrülpser war
    */
-  burp(roll: number): boolean {
-    this.sprudel = clamp(this.sprudel - BURP.sprudelRelief, 0, METERS.sprudel.max);
-    const failed = roll < BURP.failChance;
+  burp(roll: number, charge: number = (BURP.sweetStart + BURP.sweetEnd) / 2): { quality: BurpQuality; failed: boolean } {
+    const quality = burpQuality(charge);
+    let relief = BURP.sprudelRelief;
+    let failed = false;
+    if (quality === 'weak') {
+      relief *= BURP.weakMinFactor + (1 - BURP.weakMinFactor) * clamp(charge / BURP.sweetStart, 0, 1);
+      failed = roll < BURP.failChance;
+    } else if (quality === 'perfect') {
+      relief *= BURP.perfectFactor;
+      this.addKotz(-BURP.perfectKotzRelief);
+    } else {
+      relief *= BURP.overReliefFactor;
+      failed = true;
+    }
+    this.sprudel = clamp(this.sprudel - relief, 0, METERS.sprudel.max);
     if (failed) this.addKotz(BURP.failKotz);
-    return failed;
+    return { quality, failed };
   }
 
   /** Zeitbasiertes Update (Abbau, passive Anstiege). */

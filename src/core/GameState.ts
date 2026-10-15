@@ -40,8 +40,8 @@ export interface PlayerCommand {
   move: Vec2;
   /** E / Leertaste / Touch-Button wurde in diesem Schritt gedrückt */
   action: boolean;
-  /** R / Touch-Button wurde in diesem Schritt gedrückt */
-  burp: boolean;
+  /** R / Touch-Button ist in diesem Schritt gedrückt (gehalten). Loslassen löst den Rülpser aus. */
+  burpHeld: boolean;
 }
 
 /** Die Abend-Phase, die zu einer In-Game-Stunde gilt. */
@@ -51,7 +51,9 @@ export function eveningAt(hour: number): EveningPhaseConfig {
   return current;
 }
 
-export const NO_COMMAND: PlayerCommand = { move: { x: 0, y: 0 }, action: false, burp: false };
+export const NO_COMMAND: PlayerCommand = { move: { x: 0, y: 0 }, action: false, burpHeld: false };
+
+const NO_PROST: ProstState = { active: false, npcId: -1, timeLeft: 0, elapsed: 0 };
 
 export type GamePhase = 'playing' | 'ended';
 
@@ -77,13 +79,18 @@ export class GameState {
   readonly solids: Rect[] = [];
 
   focus: InteractionFocus | null = null;
-  prost: ProstState = { active: false, npcId: -1, timeLeft: 0 };
+  prost: ProstState = { ...NO_PROST };
   /** Aktueller Winkel des Karussells (Renderer dreht die Grafik mit) */
   carouselAngle = 0;
   /** Aktueller Drift-Vektor (für Debug/Renderer, z. B. Schwank-Animation) */
   drift: Vec2 = { x: 0, y: 0 };
 
-  readonly stats: GameStats = { drinks: 0, foods: 0, burps: 0, failedBurps: 0, prosts: 0, maxPromille: 0, vomits: 0 };
+  readonly stats: GameStats = {
+    drinks: 0, foods: 0, burps: 0, failedBurps: 0, perfectBurps: 0, prosts: 0, prostsOnBeat: 0, maxProstCombo: 0,
+    maxPromille: 0, vomits: 0,
+  };
+  /** Aktuelle Prost-Combo: "Prost!" im Takt in Folge */
+  prostCombo = 0;
 
   private nextId = 1;
   private fieldSpawnTimer = 0;
@@ -93,12 +100,13 @@ export class GameState {
   evening: EveningPhaseConfig = PHASES[0];
   private playerLineTimer = 8;
   private wasWarning = false;
+  private burpWasHeld = false;
 
   constructor(seed = Date.now()) {
     this.rng = new Rng(seed);
     this.player = {
       id: PLAYER_ID, pos: { ...PLAYER_START }, vel: { x: 0, y: 0 }, facing: -Math.PI / 2,
-      slowTimer: 0, invertTimer: 0, onCarousel: false, spin: 0, burpCooldown: 0,
+      slowTimer: 0, invertTimer: 0, onCarousel: false, spin: 0, burpCooldown: 0, burpCharging: false, burpCharge: 0,
       boostTimer: 0, prostBoostTimer: 0, vomitTimer: 0, vomitElapsed: 0,
     };
     this.nextProstIn = this.rng.range(EVENTS.prost.minInterval * 0.5, EVENTS.prost.maxInterval * 0.6);
@@ -224,7 +232,7 @@ export class GameState {
     this.updateNpcs(dt);
     this.updateSpawns(dt);
     this.updateFocus();
-    this.handleActions(cmd);
+    this.handleActions(cmd, dt);
     this.updateProst(dt);
     this.meters.update(dt);
     this.updateMood(dt);
@@ -275,7 +283,8 @@ export class GameState {
     const driftScale = moving ? 1 : 0.3;
     const dir = { x: move.x + this.drift.x * driftScale, y: move.y + this.drift.y * driftScale };
 
-    const speed = PLAYER.speed * (p.slowTimer > 0 ? PLAYER.slowFactor : 1) * (p.boostTimer > 0 ? PLAYER.boostFactor : 1);
+    const speed = PLAYER.speed * (p.slowTimer > 0 ? PLAYER.slowFactor : 1) * (p.boostTimer > 0 ? PLAYER.boostFactor : 1)
+      * (p.burpCharging ? PLAYER.burpChargeFactor : 1);
     p.vel = { x: dir.x * speed, y: dir.y * speed };
     p.pos.x += p.vel.x * dt;
     p.pos.y += p.vel.y * dt;
@@ -552,7 +561,7 @@ export class GameState {
     this.focus = best;
   }
 
-  private handleActions(cmd: PlayerCommand): void {
+  private handleActions(cmd: PlayerCommand, dt: number): void {
     // Beim Kotzen: Aktion = "Reiß di zam!" (verkürzt den Kontrollverlust), sonst nichts
     if (this.isVomiting) {
       if (cmd.action) {
@@ -563,19 +572,26 @@ export class GameState {
       }
       return;
     }
-    if (cmd.burp) this.tryBurp();
+    this.updateBurp(cmd.burpHeld, dt);
     if (!cmd.action) return;
 
     // "Prost!" hat Vorrang
     if (this.prost.active) {
+      const pe = EVENTS.prost;
+      const onBeat = this.prostOnBeat;
+      this.prostCombo = onBeat ? this.prostCombo + 1 : 0;
+      const comboBonus = 1 + Math.min(Math.max(0, this.prostCombo - 1), pe.comboMax) * pe.comboStep;
+      const beat = onBeat ? pe.onBeatFactor * comboBonus : 1;
       const boost = this.player.prostBoostTimer > 0 ? 2 : 1;
-      const gained = this.meters.prost(EVENTS.prost.bonusPromille * boost, EVENTS.prost.sprudel, EVENTS.prost.kotz);
+      const gained = this.meters.prost(pe.bonusPromille * boost * beat, pe.sprudel, pe.kotz);
       this.stats.prosts++;
       this.stats.drinks++;
-      this.prost = { active: false, npcId: -1, timeLeft: 0 };
+      if (onBeat) this.stats.prostsOnBeat++;
+      this.stats.maxProstCombo = Math.max(this.stats.maxProstCombo, this.prostCombo);
+      this.prost = { ...NO_PROST };
       this.events.push({ type: 'drink', drink: 'mass', pos: { ...this.player.pos }, viaProst: true, promille: gained });
-      this.events.push({ type: 'prostEnd', joined: true });
-      this.say(PLAYER_ID, 'Prooost!');
+      this.events.push({ type: 'prostEnd', joined: true, onBeat, combo: this.prostCombo });
+      this.say(PLAYER_ID, onBeat ? 'Oans, zwoa – g\'suffa!' : 'Prooost!');
       return;
     }
 
@@ -629,25 +645,62 @@ export class GameState {
     if (this.rng.chance(0.5)) this.say(PLAYER_ID, this.rng.pick(LINES.food));
   }
 
-  private tryBurp(): void {
+  /** R halten lädt den Rülpser auf, Loslassen löst ihn aus. */
+  private updateBurp(held: boolean, dt: number): void {
     const p = this.player;
+    const pressed = held && !this.burpWasHeld;
+    this.burpWasHeld = held;
+    if (p.burpCharging) {
+      p.burpCharge += dt;
+      if (!held || p.burpCharge >= BURP.autoReleaseAt) this.releaseBurp();
+      return;
+    }
+    if (!pressed) return;
     if (p.burpCooldown > 0) { this.events.push({ type: 'burpCooldown' }); return; }
+    p.burpCharging = true;
+    p.burpCharge = 0;
+    this.events.push({ type: 'burpChargeStart' });
+  }
+
+  private releaseBurp(): void {
+    const p = this.player;
+    p.burpCharging = false;
     p.burpCooldown = BURP.cooldownSeconds;
-    const failed = this.meters.burp(this.rng.next());
+    const { quality, failed } = this.meters.burp(this.rng.next(), p.burpCharge);
     this.stats.burps++;
     if (failed) this.stats.failedBurps++;
-    this.events.push({ type: 'burp', failed, pos: { ...p.pos } });
+    if (quality === 'perfect') this.stats.perfectBurps++;
+    this.events.push({ type: 'burp', failed, quality, pos: { ...p.pos } });
     this.say(PLAYER_ID, this.rng.pick(failed ? LINES.burpFail : LINES.burp));
+  }
+
+  /** Abstand des Prost-Schlags (s) zum nächsten Takt-Schlag, frühestens ab dem 1. Schlag */
+  get prostBeatOffset(): number {
+    const period = 60 / EVENTS.prost.beatBpm;
+    const t = this.prost.elapsed;
+    const k = Math.max(1, Math.round(t / period));
+    return Math.abs(t - k * period);
+  }
+
+  /** Würde ein "Prost!" jetzt im Takt sein? */
+  get prostOnBeat(): boolean {
+    return this.prost.active && this.prostBeatOffset <= EVENTS.prost.beatTolerance;
   }
 
   // --- Prost-Event ---------------------------------------------------------
 
   private updateProst(dt: number): void {
     if (this.prost.active) {
+      const period = 60 / EVENTS.prost.beatBpm;
+      const before = Math.floor(this.prost.elapsed / period);
+      this.prost.elapsed += dt;
       this.prost.timeLeft -= dt;
+      const after = Math.floor(this.prost.elapsed / period);
+      if (after > before && this.prost.timeLeft > 0) this.events.push({ type: 'prostBeat', n: after });
       if (this.prost.timeLeft <= 0) {
-        this.prost = { active: false, npcId: -1, timeLeft: 0 };
-        this.events.push({ type: 'prostEnd', joined: false });
+        this.prost = { ...NO_PROST };
+        this.prostCombo = 0;
+        this.events.push({ type: 'prostEnd', joined: false, onBeat: false, combo: 0 });
       }
       return;
     }
@@ -664,7 +717,7 @@ export class GameState {
       if (d < bestD) { bestD = d; best = n; }
     }
     if (!best) return;
-    this.prost = { active: true, npcId: best.id, timeLeft: EVENTS.prost.windowSeconds };
+    this.prost = { active: true, npcId: best.id, timeLeft: EVENTS.prost.windowSeconds, elapsed: 0 };
     this.events.push({ type: 'prostStart', npcId: best.id });
     this.say(best.id, 'Prost!');
   }
@@ -738,7 +791,9 @@ export class GameState {
     p.prostBoostTimer = 0;
     p.slowTimer = 0;
     p.invertTimer = 0;
-    this.prost = { active: false, npcId: -1, timeLeft: 0 };
+    p.burpCharging = false;
+    this.prost = { ...NO_PROST };
+    this.prostCombo = 0;
     this.events.push({ type: 'vomitSurvived', cause, pos: { ...p.pos }, count: this.stats.vomits, max: VOMIT.maxVomits });
     this.say(PLAYER_ID, this.rng.pick(LINES.vomit));
   }

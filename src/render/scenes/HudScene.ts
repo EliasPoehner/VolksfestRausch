@@ -3,7 +3,7 @@
  * Doppeltsehen nicht auf die Anzeigen.
  */
 import Phaser from 'phaser';
-import { METERS, PHASES } from '../../config/balance';
+import { EVENTS, METERS, PHASES } from '../../config/balance';
 import { formatPromille, type GameEvent } from '../../core';
 import { audio } from '../../audio/AudioManager';
 import type { GameScene } from './GameScene';
@@ -124,9 +124,13 @@ export class HudScene extends Phaser.Scene {
 
     // Statuszeile
     const p = s.player;
-    const burp = p.burpCooldown > 0 ? `Rülpsen in ${p.burpCooldown.toFixed(1).replace('.', ',')} s` : 'Rülpsen bereit (R)';
+    const burpKey = this.game_.touch ? '💨 halten' : 'R halten';
+    const burp = p.burpCharging ? 'Rülpser lädt… im Grünen loslassen!'
+      : p.burpCooldown > 0 ? `Rülpsen in ${p.burpCooldown.toFixed(1).replace('.', ',')} s` : `Rülpsen bereit (${burpKey})`;
     const lives = '🤢'.repeat(s.vomitsLeft) + '💀'.repeat(Math.max(0, 3 - s.vomitsLeft));
-    const buffs = [p.boostTimer > 0 ? '⚡ Kick' : '', p.prostBoostTimer > 0 ? '🥂 Prost ×2' : ''].filter(Boolean).join('  ');
+    const buffs = [
+      p.boostTimer > 0 ? '⚡ Kick' : '', p.prostBoostTimer > 0 ? '🥂 Prost ×2' : '', s.prostCombo > 0 ? `🎺 Combo ×${s.prostCombo}` : '',
+    ].filter(Boolean).join('  ');
     this.statusText.setText(`🍺 ${s.stats.drinks}   💨 ${s.stats.burps}   ·   ${burp}   ·   Sanka-Karte: ${lives}${buffs ? '   ·   ' + buffs : ''}`);
     this.statusText.setColor(p.burpCooldown > 0 ? '#cfd8e3' : '#8fd3ff');
 
@@ -138,13 +142,16 @@ export class HudScene extends Phaser.Scene {
     else if (s.controlsInverted) alert = 'Steuerung verdreht!';
     else if (p.onCarousel) alert = 'Karussell! Schnell runter!';
     else if (p.slowTimer > 0) alert = 'Hendl-Koma… langsam!';
-    else if (m.sprudel > METERS.sprudel.dangerThreshold) alert = 'Sprudel-Alarm! Rülpsen (R)!';
+    else if (m.sprudel > METERS.sprudel.dangerThreshold) alert = `Sprudel-Alarm! Rülpsen (${this.game_.touch ? '💨' : 'R'} halten)!`;
     this.alertText.setText(alert).setColor(s.isWarning ? COLORS.vomit : '#ff8ad8')
       .setScale(alert ? 1 + Math.sin(this.t * 8) * 0.04 : 1);
 
     if (s.prost.active) {
       const key = this.game_.touch ? 'Trink-Button' : 'E';
-      this.prostText.setText(`PROST!  ${key} drücken!\n${s.prost.timeLeft.toFixed(1).replace('.', ',')} s`).setScale(1 + Math.sin(this.t * 12) * 0.05);
+      const period = 60 / EVENTS.prost.beatBpm;
+      const pulse = Math.exp(-((s.prost.elapsed % period) / period) * 5);
+      this.prostText.setText(`PROST!  ${key} im Takt drücken!\n${s.prost.timeLeft.toFixed(1).replace('.', ',')} s`)
+        .setScale(1 + pulse * 0.08).setColor(s.prostOnBeat ? '#7ed957' : COLORS.gold);
     } else this.prostText.setText('');
   }
 

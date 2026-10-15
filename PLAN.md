@@ -62,11 +62,24 @@ Beobachtung 1 („gute Spieler kotzen nie“) stimmt damit nur halb: Das Kotz-Ne
 | Klug | 2,03 | 2,10 | 5 % | 20 % |
 | Klug + Endspurt | 2,20 | 2,27 | 5 % | 20 % |
 
-## Schritt 3 – D: Rülpsen und Prost als Skill-Mechaniken
+## Schritt 3 – D: Rülpsen und Prost als Skill-Mechaniken ✅
 
-- Rülpsen aufladen: R halten, im Sweet-Spot loslassen (zu früh = wenig Wirkung, zu spät = Fehlrülpser). Command um `burpHeld`/`burpReleased` erweitern (`PlayerCommand`, Keyboard- und Touch-Input).
-- Prost im Takt der Blasmusik (Beat aus `AudioManager`/Generator-Script `scripts/generate-audio.mjs`), Combo-Zähler mit Stimmungs-Multiplikator.
-- Optional: Rülps-Duell mit einem NPC als seltenes Event.
+- [x] Rülpsen aufladen: `PlayerCommand.burpHeld` (R bzw. 💨 halten). Ladezeit < 0,6 s = schwach (10 % Fehlrülpser), 0,6–0,9 s = **perfekt** (×1,3 Sprudel-Abbau, −4 Kotz, nie daneben), länger = immer Fehlrülpser, ab 1,5 s platzt er von selbst. Beim Aufladen ×0,7 Tempo. Werte in `BURP`, Logik in `GameState.updateBurp` und `Meters.burp(roll, charge)`.
+- [x] Prost im Takt: 132 BPM wie die Blasmusik in `scripts/generate-audio.mjs`. Der Takt läuft in der Logik ab Beginn des Prost-Rufs (`ProstState.elapsed`), Event `prostBeat` für Klick-Sound und Puls. Im Takt (±0,1 s, frühestens ab dem 1. Schlag): ×1,5, Combo +25 % je Folge-Prost bis ×2. Stats: `perfectBurps`, `prostsOnBeat`, `maxProstCombo` (für Achievements in Schritt 5).
+- [x] Darstellung: Ladebalken über dem Kopf mit grünem Sweet-Spot, „PERFEKT! BÖÖÖRP!“, Prost-Ring pulsiert im Takt und wird im Takt-Fenster grün, Combo im HUD, Touch-Button „Halten“.
+- [x] Tests: Rülps-Qualitäten, Aufladen per Command, Auto-Platzer, Prost im Takt mit Combo, Combo-Reset. Neuer Balance-Bot „Klug ohne Gefühl“ (tippt nur, drückt sofort) muss mindestens 5 % hinter „Klug“ liegen.
+- [ ] Optional: Rülps-Duell mit einem NPC (offen).
+
+Hinweis: Die Musik selbst läuft nicht synchron zur Logik (sie startet mit der Szene und leiert bei hohem Pegel). Deshalb gibt die Logik den Takt vor, und während des Prost-Rufs klickt es auf jedem Schlag.
+
+| Strategie (20 Seeds) | Ø Score | Ø ‰ | Sanka | mind. 1× gekotzt |
+|---|---|---|---|---|
+| Maß-Spam | 1,18 | 3,10 | 100 % | 100 % |
+| Gierig | 1,03 | 2,71 | 100 % | 100 % |
+| Wahllos | 0,91 | 2,40 | 100 % | 100 % |
+| Klug | 2,41 | 2,62 | 10 % | 45 % |
+| Klug + Endspurt | 2,74 | 2,94 | 5 % | 45 % |
+| Klug ohne Gefühl | 1,78 | 1,85 | 0 % | 25 % |
 
 ## Schritt 4 – E: Welt mit Gegenmitteln und Chancen
 

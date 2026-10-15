@@ -8,6 +8,7 @@
  */
 import type { DrinkId, EveningPhaseId, FoodId } from '../config/balance';
 import type { Vec2 } from './math';
+import type { BurpQuality } from './Meters';
 
 export type VomitCause = 'kotz' | 'sprudel' | 'misch';
 export type EndReason = 'vomit' | 'zapfenstreich';
@@ -16,13 +17,19 @@ export type GameEvent =
   /** `promille` = tatsächlich gewonnene Promille (nach Magen und Phase) */
   | { type: 'drink'; drink: DrinkId; pos: Vec2; viaProst: boolean; promille: number }
   | { type: 'food'; food: FoodId; pos: Vec2 }
-  | { type: 'burp'; failed: boolean; pos: Vec2 }
+  /** Rülpser losgelassen: `quality` = zu früh / Sweet-Spot / zu spät */
+  | { type: 'burp'; failed: boolean; quality: BurpQuality; pos: Vec2 }
+  /** R wird gehalten – Aufladen beginnt */
+  | { type: 'burpChargeStart' }
   | { type: 'burpCooldown' }
   | { type: 'speech'; entityId: number; text: string }
   | { type: 'warningStart' }
   | { type: 'warningEnd' }
   | { type: 'prostStart'; npcId: number }
-  | { type: 'prostEnd'; joined: boolean }
+  /** Ein Schlag der Blasmusik während des Prost-Fensters (`n` = 1, 2, …) */
+  | { type: 'prostBeat'; n: number }
+  /** `onBeat` = im Takt mitgetrunken, `combo` = aktuelle Combo danach */
+  | { type: 'prostEnd'; joined: boolean; onBeat: boolean; combo: number }
   | { type: 'carouselEnter' }
   | { type: 'bump'; pos: Vec2 }
   | { type: 'controlsInverted' }

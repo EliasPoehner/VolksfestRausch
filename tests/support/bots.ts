@@ -6,7 +6,7 @@
  * Wird von `tests/balance.test.ts` genutzt, um zu prüfen, dass das Balancing
  * nicht unbemerkt kippt (z. B. "kluger Bot schlägt Spam-Bot").
  */
-import { DRINKS, ROUND, type DrinkId, type FoodId } from '../../src/config/balance';
+import { BURP, DRINKS, ROUND, type DrinkId, type FoodId } from '../../src/config/balance';
 import { GameState, type PlayerCommand } from '../../src/core/GameState';
 import type { GameResult } from '../../src/core/entities';
 import type { Meters } from '../../src/core/Meters';
@@ -22,7 +22,13 @@ export interface Strategy {
   joinProst(m: Meters, g: GameState): boolean;
   /** Jetzt rülpsen (wird nur gefragt, wenn der Rülpser bereit ist)? */
   shouldBurp(m: Meters, g: GameState, rng: Rng): boolean;
+  /** Wie lange R gehalten wird (s). Standard: Mitte des Sweet-Spots */
+  burpHold?(rng: Rng): number;
+  /** Beim "Prost!" auf den Takt warten statt sofort zu drücken? */
+  prostOnBeat?: boolean;
 }
+
+const SWEET_MID = (BURP.sweetStart + BURP.sweetEnd) / 2;
 
 interface Target { key: string; pos: Vec2 }
 
@@ -37,6 +43,7 @@ export class Bot {
   private sideSign = 1;
   private lastPos: Vec2 | null = null;
   private mash = 0;
+  private burpTarget = SWEET_MID;
   private readonly blocked = new Map<string, number>();
 
   constructor(private readonly strategy: Strategy, seed: number) {
@@ -45,7 +52,7 @@ export class Bot {
 
   command(g: GameState, dt: number): PlayerCommand {
     const m = g.meters;
-    const cmd: PlayerCommand = { move: { x: 0, y: 0 }, action: false, burp: false };
+    const cmd: PlayerCommand = { move: { x: 0, y: 0 }, action: false, burpHeld: false };
 
     // Kontrollverlust: "Reiß di zam!" mit ca. 7,5 Tastendrücken pro Sekunde
     if (g.isVomiting) {
@@ -53,10 +60,16 @@ export class Bot {
       return cmd;
     }
 
-    if (g.burpReady && this.strategy.shouldBurp(m, g, this.rng)) cmd.burp = true;
+    // Rülpsen: halten, bis die gewünschte Ladezeit erreicht ist, dann loslassen
+    if (g.player.burpCharging) {
+      cmd.burpHeld = g.player.burpCharge + dt < this.burpTarget;
+    } else if (g.burpReady && this.strategy.shouldBurp(m, g, this.rng)) {
+      cmd.burpHeld = true;
+      this.burpTarget = this.strategy.burpHold?.(this.rng) ?? SWEET_MID;
+    }
 
     if (g.prost.active) {
-      if (this.strategy.joinProst(m, g)) cmd.action = true;
+      if (this.strategy.joinProst(m, g) && (!this.strategy.prostOnBeat || g.prostOnBeat)) cmd.action = true;
       return cmd;
     }
 
@@ -179,6 +192,8 @@ export const greedyBot: Strategy = {
   wants: (item, m) => (item.kind === 'drink' ? m.kotz < 80 : m.kotz > 75 && item.id !== 'wasser'),
   joinProst: () => true,
   shouldBurp: (m) => m.sprudel > 55,
+  // ungeduldig: hält mal zu kurz, mal zu lang
+  burpHold: (rng) => 0.3 + rng.next() * 0.9,
 };
 
 /** Nimmt, was in der Nähe liegt, und rülpst zufällig. */
@@ -187,6 +202,7 @@ export const randomBot: Strategy = {
   wants: (_item, _m, _g, rng) => rng.next() < 0.6,
   joinProst: (_m, g) => g.elapsed % 2 < 1,
   shouldBurp: (_m, _g, rng) => rng.next() < 0.01,
+  burpHold: (rng) => rng.next() * 1.6,
 };
 
 /**
@@ -210,6 +226,7 @@ export const smartBot: Strategy = {
   },
   joinProst: (m) => m.kotz < 65 && m.sprudel < 65,
   shouldBurp: (m) => m.sprudel > 35,
+  prostOnBeat: true,
 };
 
 /**
@@ -228,7 +245,17 @@ export const lastOrderBot: Strategy = {
   },
 };
 
-export const STRATEGIES = { spam: spamBot, greedy: greedyBot, random: randomBot, smart: smartBot, lastOrder: lastOrderBot };
+/** Wie der kluge Bot, aber ohne Gefühl: tippt R nur kurz an und drückt beim "Prost!" sofort. */
+export const clumsyBot: Strategy = {
+  ...smartBot,
+  name: 'Klug ohne Gefühl',
+  burpHold: () => 0,
+  prostOnBeat: false,
+};
+
+export const STRATEGIES = {
+  spam: spamBot, greedy: greedyBot, random: randomBot, smart: smartBot, lastOrder: lastOrderBot, clumsy: clumsyBot,
+};
 
 export interface RunSummary {
   strategy: string;

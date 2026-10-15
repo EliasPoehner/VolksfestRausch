@@ -14,7 +14,7 @@ Gebaut mit **Vite + TypeScript + Phaser 3 + Howler.js**. Das Ergebnis ist eine s
 |---|---|---|
 | Laufen | WASD / Pfeiltasten | virtueller Joystick (links) |
 | Getränk/Essen nehmen, „Prost!“ mittrinken | E / Leertaste | 🍺-Button |
-| Rülpsen (Cooldown 5 s, 10 % Fehlrülpser) | R | 💨-Button |
+| Rülpsen: halten zum Aufladen, im grünen Bereich loslassen (Cooldown 5 s) | R halten | 💨-Button halten |
 | Pause | Esc / P | ⏸ |
 | Ton an/aus | M | 🔊 |
 
@@ -27,6 +27,8 @@ Gebaut mit **Vite + TypeScript + Phaser 3 + Howler.js**. Das Ergebnis ist eine s
 - **Mischmasch-Meter** (0–100): verschiedene Sorten innerhalb von 30 s. Ab 50 steigt die Kotzleiste doppelt so schnell, bei 100 kotzt man sofort.
 - **Magen** (0–100): Essen füllt den Magen. Ein voller Magen dämpft Kotz (bis −50 %) und Alkoholaufnahme (bis −20 %), wird aber verdaut. Essen *vorher* lohnt sich mehr als Essen *hinterher*.
 - **Kotzen ist ein Rückschlag, kein Ende**: Beim Kotzen verliert man ~35 % der Promille, die Kotzleiste fällt auf 30 (beim 2. Mal 42), der Magen ist leer (20 s lang wirkt Kotz stärker), und man ist ~2,6 s handlungsunfähig. Wer **E hämmert**, verkürzt das (min. 1 s). Beim **3. Mal** kommt der Sanka. Jedes überstandene Kotzen kostet 12 % Score, der Sanka halbiert ihn.
+- **Rülpsen ist Gefühlssache**: R halten lädt den Rülpser auf (Balken über dem Kopf). Im grünen Bereich (0,6–0,9 s) losgelassen gibt es einen **perfekten Rülpser** (+30 % Sprudel-Abbau, etwas weniger Kotz, nie daneben). Zu früh = schwach, 10 % Fehlrülpser. Zu lang = immer Fehlrülpser. Beim Aufladen läuft man langsamer.
+- **„Prost!“ im Takt**: Während des Prost-Rufs pulsiert der Ring im Takt der Blasmusik (132 BPM) und wird grün, wenn man im Takt ist. Im Takt mitgetrunken gibt es ×1,5 Promille, jedes weitere Prost im Takt in Folge +25 % (**Combo**, bis ×2). Sofort drücken, daneben drücken oder verpassen setzt die Combo zurück.
 - **Getränke haben Rollen**: Maß = solide Basis, Radler = mild, Weißbier/Sekt = viel Sprudel, **Obstler** = Sprudel runter, aber der Kotz kommt verzögert, **Sekt** = „Prost!“ zählt 25 s lang doppelt, **Jägermeister** = Mischmasch-Spike, dafür 6 s Tempo-Kick.
 - **Essen hat Rollen**: Brezn = billige Unterlage, **Hendl** = größte Magenfüllung (macht kurz träge), **Steckerlfisch** = Unterlage + baut Mischmasch ab, **Wasser** = Soforthilfe gegen Kotz und Sprudel, kostet etwas Promille.
 - **Gags**: Karussell dreht dich (und deinen Magen), ab 1,5 ‰ driftet die Steuerung, ab 2,5 ‰ ist sie gelegentlich vertauscht, Bildschirmwackeln und Doppeltsehen, „Prost!“-Events, Sprechblasen, Sanka-Abholung.
@@ -50,7 +52,7 @@ npm run typecheck  # TypeScript prüfen
 npm run gen:audio  # Sounds & Blasmusik neu synthetisieren → public/assets/audio
 ```
 
-**Balance-Bots** (`tests/balance.test.ts`, Strategien in `tests/support/bots.ts`): Fünf Bots (nur Maß, gierig, wahllos, klug, klug mit Endspurt in der Last Order) spielen je 20 komplette Runden über `GameState`. Die Tests prüfen z. B., dass kluges Spiel Maß-Spam deutlich schlägt, Spam fast immer im Sanka endet und sich der Endspurt lohnt. Wer `balance.ts` ändert und hier Rot sieht, hat das Balancing gekippt. Mehr Runden für eine genauere Auswertung: `BALANCE_SEEDS=60 npm test`.
+**Balance-Bots** (`tests/balance.test.ts`, Strategien in `tests/support/bots.ts`): Sechs Bots (nur Maß, gierig, wahllos, klug, klug mit Endspurt, klug ohne Gefühl für Sweet-Spot und Takt) spielen je 20 komplette Runden über `GameState`. Die Tests prüfen z. B., dass kluges Spiel Maß-Spam deutlich schlägt, Spam fast immer im Sanka endet, sich der Endspurt lohnt und Gefühl beim Rülpsen und Prosten belohnt wird. Wer `balance.ts` ändert und hier Rot sieht, hat das Balancing gekippt. Mehr Runden für eine genauere Auswertung: `BALANCE_SEEDS=60 npm test`.
 
 ## Build
 

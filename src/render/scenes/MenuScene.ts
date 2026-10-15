@@ -31,11 +31,11 @@ export class MenuScene extends Phaser.Scene {
     // Anleitung
     const howto = [
       'Sammle bis 23:00 Uhr so viel Promille wie möglich!',
-      'Laufen: WASD / Pfeiltasten   ·   Nehmen: E / Leertaste   ·   Rülpsen: R',
+      'Laufen: WASD / Pfeiltasten   ·   Nehmen: E / Leertaste   ·   Rülpsen: R halten',
       'Brezn, Hendl & Steckerlfisch füllen den Magen, Wasser hilft sofort.',
-      'Kohlensäure erhöht den Sprudel-Druck → rülpsen hilft (meistens).',
+      'Sprudel-Druck? R halten und im grünen Bereich loslassen!',
       'Wild durcheinander trinken füllt den Mischmasch-Meter. Obacht!',
-      'Ruft wer "Prost!", hast du 3 Sekunden zum Mittrinken.',
+      'Ruft wer "Prost!": im Takt der Blasmusik mittrinken gibt Bonus!',
       'Kotzen kostet Promille – beim dritten Mal kommt der Sanka.',
     ];
     const panel = this.add.graphics();

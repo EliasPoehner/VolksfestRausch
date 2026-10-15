@@ -51,13 +51,30 @@ describe('Meters', () => {
     expect(m.promille).toBeCloseTo(0.9);
   });
 
-  it('Rülpsen baut Sprudel ab, Fehlrülpser erhöht Kotz', () => {
+  it('Rülpser im Sweet-Spot: mehr Sprudel-Abbau, weniger Kotz, nie daneben', () => {
+    const m = new Meters();
+    m.sprudel = 80; m.kotz = 20;
+    const r = m.burp(0.0, (BURP.sweetStart + BURP.sweetEnd) / 2);
+    expect(r).toEqual({ quality: 'perfect', failed: false });
+    expect(m.sprudel).toBeCloseTo(80 - BURP.sprudelRelief * BURP.perfectFactor);
+    expect(m.kotz).toBeCloseTo(20 - BURP.perfectKotzRelief);
+  });
+
+  it('Zu früh losgelassen: schwächer, Fehlrülpser möglich', () => {
     const m = new Meters();
     m.sprudel = 60;
-    expect(m.burp(0.99)).toBe(false);
-    expect(m.sprudel).toBe(60 - BURP.sprudelRelief);
+    expect(m.burp(0.99, 0)).toEqual({ quality: 'weak', failed: false });
+    expect(m.sprudel).toBeCloseTo(60 - BURP.sprudelRelief * BURP.weakMinFactor);
     expect(m.kotz).toBe(0);
-    expect(m.burp(0.0)).toBe(true);
+    expect(m.burp(0.0, 0).failed).toBe(true);
+    expect(m.kotz).toBe(BURP.failKotz);
+  });
+
+  it('Zu lange gehalten: immer Fehlrülpser, halbe Wirkung', () => {
+    const m = new Meters();
+    m.sprudel = 60;
+    expect(m.burp(0.99, BURP.sweetEnd + 0.1)).toEqual({ quality: 'over', failed: true });
+    expect(m.sprudel).toBeCloseTo(60 - BURP.sprudelRelief * BURP.overReliefFactor);
     expect(m.kotz).toBe(BURP.failKotz);
   });
 
@@ -255,10 +272,73 @@ describe('GameState', () => {
     expect(g.stats.prosts).toBe(1);
   });
 
+  it('R halten lädt auf, Loslassen im Sweet-Spot ergibt einen perfekten Rülpser', () => {
+    const g = new GameState(3);
+    g.meters.sprudel = 70;
+    const steps = Math.round(((BURP.sweetStart + BURP.sweetEnd) / 2) / ROUND.fixedStep);
+    for (let i = 0; i < steps; i++) g.step(ROUND.fixedStep, { ...NO_COMMAND, burpHeld: true });
+    expect(g.player.burpCharging).toBe(true);
+    expect(g.stats.burps).toBe(0);
+    g.step(ROUND.fixedStep, NO_COMMAND);
+    expect(g.player.burpCharging).toBe(false);
+    expect(g.stats.perfectBurps).toBe(1);
+    const e = g.events.drain().find((x) => x.type === 'burp');
+    expect(e && e.type === 'burp' && e.quality).toBe('perfect');
+  });
+
+  it('Wer zu lange hält, rülpst automatisch daneben', () => {
+    const g = new GameState(3);
+    for (let i = 0; i < Math.ceil(BURP.autoReleaseAt / ROUND.fixedStep) + 2; i++) {
+      g.step(ROUND.fixedStep, { ...NO_COMMAND, burpHeld: true });
+    }
+    expect(g.player.burpCharging).toBe(false);
+    expect(g.stats.failedBurps).toBe(1);
+  });
+
+  it('Prost im Takt gibt mehr Promille und baut eine Combo auf', () => {
+    const g = new GameState(11);
+    const joinOnBeat = () => {
+      let guard = 0;
+      while (!g.prost.active && guard++ < 60 * 120) {
+        g.meters.kotz = 0; g.meters.sprudel = 0; g.meters.misch = 0;
+        g.step(ROUND.fixedStep, NO_COMMAND);
+      }
+      while (!g.prostOnBeat && g.prost.active) g.step(ROUND.fixedStep, NO_COMMAND);
+      const before = g.meters.promille;
+      g.step(ROUND.fixedStep, { ...NO_COMMAND, action: true });
+      return (g.meters.promille - before) / g.meters.mods.promille;
+    };
+    const first = joinOnBeat();
+    expect(first).toBeCloseTo(EVENTS.prost.bonusPromille * EVENTS.prost.onBeatFactor, 2);
+    const second = joinOnBeat();
+    expect(second).toBeCloseTo(EVENTS.prost.bonusPromille * EVENTS.prost.onBeatFactor * (1 + EVENTS.prost.comboStep), 2);
+    expect(g.prostCombo).toBe(2);
+    expect(g.stats.prostsOnBeat).toBe(2);
+    expect(g.stats.maxProstCombo).toBe(2);
+  });
+
+  it('Prost neben dem Takt oder verpasst setzt die Combo zurück', () => {
+    const g = new GameState(11);
+    g.prostCombo = 3;
+    let guard = 0;
+    while (!g.prost.active && guard++ < 60 * 120) { g.meters.kotz = 0; g.step(ROUND.fixedStep, NO_COMMAND); }
+    g.step(ROUND.fixedStep, { ...NO_COMMAND, action: true }); // sofort = vor dem ersten Schlag
+    expect(g.prostCombo).toBe(0);
+    g.prostCombo = 3;
+    guard = 0;
+    while (!g.prost.active && guard++ < 60 * 120) { g.meters.kotz = 0; g.step(ROUND.fixedStep, NO_COMMAND); }
+    while (g.prost.active) g.step(ROUND.fixedStep, NO_COMMAND);
+    expect(g.prostCombo).toBe(0);
+  });
+
   it('Rülpsen hat einen Cooldown', () => {
     const g = new GameState(3);
-    g.step(ROUND.fixedStep, { ...NO_COMMAND, burp: true });
-    g.step(ROUND.fixedStep, { ...NO_COMMAND, burp: true });
+    const tap = () => {
+      g.step(ROUND.fixedStep, { ...NO_COMMAND, burpHeld: true });
+      g.step(ROUND.fixedStep, NO_COMMAND);
+    };
+    tap();
+    tap();
     expect(g.stats.burps).toBe(1);
   });
 });
