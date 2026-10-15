@@ -339,6 +339,20 @@ export const EVENTS = {
     /** … bis höchstens zu dieser Combo-Stufe */
     comboMax: 4,
   },
+  /** Rülps-Duell: ein Besucher fordert einen heraus (ab der Stimmungs-Phase) */
+  duel: {
+    /** Abstand (s) zwischen zwei Duellen (zufällig dazwischen) */
+    minInterval: 35,
+    maxInterval: 60,
+    /** So lange (s) hat man Zeit für seinen Rülpser */
+    windowSeconds: 6,
+    /** Nur Besucher in diesem Umkreis fordern heraus */
+    radius: 420,
+    /** Wer gewinnt, bekommt vom Verlierer eine Maß spendiert (Pickup neben einem) */
+    prizeDrink: 'mass' as DrinkId,
+    /** Chance, dass der Herausforderer selbst perfekt rülpst – dann reicht nur ein perfekter Rülpser */
+    npcPerfectChance: 0.35,
+  },
   /** Zufällige Sprechblasen von NPCs: Intervall (s) */
   npcChatterMin: 2.5,
   npcChatterMax: 6,
@@ -584,6 +598,9 @@ export const LINES = {
   lukasMid: ['Ned schlecht!', 'Fast!'],
   lukasWeak: ['Mei Arm…', 'Des war nix.'],
   heart: ['Mei Lebkuchenherz hod mi grett!', 'Schutzengel aus Lebkuchen!'],
+  duelStart: ['Rülps-Duell, Freindl?', 'Des kannst du ned besser!', 'Wer lauter rülpst, kriagt a Maß!'],
+  duelWin: ['Respekt! A Maß für di!', 'Mei, du bist a Hund!'],
+  duelLose: ['Hahaha, des war nix!', 'Üben, Bua, üben!'],
   npc: [
     'Oans, zwoa, g\'suffa!', 'Ein Prosit der Gemütlichkeit!', 'Zwoa Maß, bittschön!',
     'Servus!', 'Mia san mia!', 'Wo is des Klo?', 'Hendl, frisch vom Grill!', 'Brezn, Brezn!',

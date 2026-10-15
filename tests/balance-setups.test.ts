@@ -7,7 +7,7 @@ import { MODIFIERS, PERKS, type ModifierId, type PerkId } from '../src/config/ba
 import { smartBot, summarize, type RunSummary } from './support/bots';
 
 const env = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env ?? {};
-const SEED_COUNT = Math.max(6, Math.round(Number(env.BALANCE_SEEDS ?? 20) / 2.5));
+const SEED_COUNT = Math.max(6, Math.round(Number(env.BALANCE_SEEDS ?? 30) / 2.5));
 const seeds = Array.from({ length: SEED_COUNT }, (_, i) => 1000 + i * 7919);
 
 describe('Balance: Wetter und Perks', () => {

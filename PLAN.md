@@ -68,7 +68,7 @@ Beobachtung 1 („gute Spieler kotzen nie“) stimmt damit nur halb: Das Kotz-Ne
 - [x] Prost im Takt: 132 BPM wie die Blasmusik in `scripts/generate-audio.mjs`. Der Takt läuft in der Logik ab Beginn des Prost-Rufs (`ProstState.elapsed`), Event `prostBeat` für Klick-Sound und Puls. Im Takt (±0,1 s, frühestens ab dem 1. Schlag): ×1,5, Combo +25 % je Folge-Prost bis ×2. Stats: `perfectBurps`, `prostsOnBeat`, `maxProstCombo` (für Achievements in Schritt 5).
 - [x] Darstellung: Ladebalken über dem Kopf mit grünem Sweet-Spot, „PERFEKT! BÖÖÖRP!“, Prost-Ring pulsiert im Takt und wird im Takt-Fenster grün, Combo im HUD, Touch-Button „Halten“.
 - [x] Tests: Rülps-Qualitäten, Aufladen per Command, Auto-Platzer, Prost im Takt mit Combo, Combo-Reset. Neuer Balance-Bot „Klug ohne Gefühl“ (tippt nur, drückt sofort) muss mindestens 5 % hinter „Klug“ liegen.
-- [ ] Optional: Rülps-Duell mit einem NPC (offen).
+- [x] Rülps-Duell mit einem NPC (nachgereicht): ab 20 Uhr alle 35–60 s, 6 s Zeit, Preis ist eine Freimaß. Neue Wiesn-Aufgabe „Ein Rülps-Duell gewinnen“.
 
 Hinweis: Die Musik selbst läuft nicht synchron zur Logik (sie startet mit der Szene und leiert bei hohem Pegel). Deshalb gibt die Logik den Takt vor, und während des Prost-Rufs klickt es auf jedem Schlag.
 
@@ -126,7 +126,6 @@ Offen: Der kluge Bot kotzt mit dem Dixi wieder selten (Beobachtung 1). Das Riese
 
 ## Ideen für danach
 
-- Rülps-Duell mit einem NPC (aus Schritt 3, optional)
 - Online-Highscore und Tageswiesn-Rangliste
 - Riesenrad attraktiver machen (Bonus, z. B. „Aussicht“: zeigt kurz alle Pickups auf der Karte)
 - Beobachtung 1 bleibt teilweise: Mit Dixi-Klo kotzt der kluge Bot selten. Man könnte das Dixi-Klo an den Mischmasch koppeln oder pro Runde begrenzen.
@@ -139,4 +138,4 @@ Offen: Der kluge Bot kotzt mit dem Dixi wieder selten (Beobachtung 1). Das Riese
 
 ## Stand
 
-Alle fünf Schritte sind umgesetzt (Branch `claude/admiring-einstein-mtqp81`).
+Alle fünf Schritte und das Rülps-Duell sind umgesetzt (Branch `claude/admiring-einstein-mtqp81`). Die Balance-Tests laufen jetzt standardmäßig mit 30 Seeds, weil 20 bzw. 8 Seeds zu verrauscht waren.

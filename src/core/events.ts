@@ -59,6 +59,10 @@ export type GameEvent =
   | { type: 'npcGone'; npcId: number }
   /** Das Lebkuchenherz hat vor dem Sanka gerettet */
   | { type: 'heartSaved'; pos: Vec2 }
+  /** Ein Besucher fordert zum Rülps-Duell */
+  | { type: 'duelStart'; npcId: number; npcPerfect: boolean }
+  /** Duell entschieden (oder Zeit abgelaufen: quality = null) */
+  | { type: 'duelEnd'; npcId: number; won: boolean; quality: BurpQuality | null; npcPerfect: boolean }
   /** Eine Wiesn-Aufgabe ist erfüllt */
   | { type: 'sideGoal'; id: string; text: string };
 

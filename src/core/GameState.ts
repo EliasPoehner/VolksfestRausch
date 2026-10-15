@@ -23,7 +23,7 @@ import {
   DIXIS, DIXI_DOOR_OFFSET, LUKAS, PLAYER_START, RIESENRAD, TENT, TENT_DOOR, WORLD,
 } from '../config/world';
 import {
-  PLAYER_ID, type ActivityKind, type Attraction, type BenchSlot, type Booth, type BumperCar, type Dixi,
+  PLAYER_ID, type ActivityKind, type Attraction, type BenchSlot, type Booth, type BumperCar, type Dixi, type DuelState,
   type GameResult, type GameStats,
   type InteractionFocus, type Npc, type Pickup, type Player, type ProstState,
 } from './entities';
@@ -32,7 +32,7 @@ import {
   Rng, clamp, clampLength1, dist, normalize, pointInRect, pushCircleOutOfCircle, pushCircleOutOfRect,
   type Rect, type Vec2,
 } from './math';
-import { Meters } from './Meters';
+import { Meters, type BurpQuality } from './Meters';
 import { clockHour, clockLabel, computeScore, titleFor } from './scoring';
 import { normalizeSetup, pickSideGoals, runFactors, type RunSetup, type SideGoalDef } from './meta';
 
@@ -101,8 +101,11 @@ export class GameState {
   readonly stats: GameStats = {
     drinks: 0, foods: 0, burps: 0, failedBurps: 0, perfectBurps: 0, prosts: 0, prostsOnBeat: 0, maxProstCombo: 0,
     maxPromille: 0, vomits: 0, dixiVisits: 0, riesenradRides: 0, bestLukas: 0, lukasBells: 0, rempler: 0,
-    securityPushes: 0, heartSaves: 0, drinkKinds: [],
+    securityPushes: 0, heartSaves: 0, duelsWon: 0, drinkKinds: [],
   };
+  /** Rülps-Duell mit einem Besucher */
+  duel: DuelState = { active: false, npcId: -1, timeLeft: 0, npcPerfect: false };
+  private nextDuelIn = 0;
   /** Aktuelle Prost-Combo: "Prost!" im Takt in Folge */
   prostCombo = 0;
 
@@ -139,6 +142,7 @@ export class GameState {
     };
     this.nextProstIn = this.rng.range(EVENTS.prost.minInterval * 0.5, EVENTS.prost.maxInterval * 0.6) * this.factors.prostInterval;
     this.applyEvening(PHASES[0]);
+    this.nextDuelIn = this.rng.range(EVENTS.duel.minInterval, EVENTS.duel.maxInterval);
     this.buildWorld();
   }
 
@@ -299,6 +303,7 @@ export class GameState {
     this.handleActions(cmd, dt);
     this.updateActivity(dt);
     this.updateProst(dt);
+    this.updateDuel(dt);
     this.meters.update(dt);
     this.updateMood(dt);
     this.updateClock();
@@ -903,6 +908,7 @@ export class GameState {
     if (quality === 'perfect') this.stats.perfectBurps++;
     this.events.push({ type: 'burp', failed, quality, pos: { ...p.pos } });
     this.say(PLAYER_ID, this.rng.pick(failed ? LINES.burpFail : LINES.burp));
+    if (this.duel.active) this.resolveDuel(quality, failed);
   }
 
   // --- Attraktionen: Dixi-Klo, Riesenrad, Hau-den-Lukas -------------------
@@ -1027,7 +1033,7 @@ export class GameState {
       }
       return;
     }
-    if (this.isVomiting || this.busy) return;
+    if (this.isVomiting || this.busy || this.duel.active) return;
     this.nextProstIn -= dt;
     if (this.nextProstIn > 0) return;
     this.nextProstIn = this.rng.range(EVENTS.prost.minInterval, EVENTS.prost.maxInterval) * this.evening.prostIntervalFactor
@@ -1045,6 +1051,55 @@ export class GameState {
     this.prost = { active: true, npcId: best.id, timeLeft: EVENTS.prost.windowSeconds, elapsed: 0 };
     this.events.push({ type: 'prostStart', npcId: best.id });
     this.say(best.id, 'Prost!');
+  }
+
+  // --- Rülps-Duell ---------------------------------------------------------
+
+  private updateDuel(dt: number): void {
+    const d = this.duel;
+    if (d.active) {
+      d.timeLeft -= dt;
+      if (d.timeLeft <= 0 && !this.player.burpCharging) this.resolveDuel(null, false);
+      return;
+    }
+    if (this.evening.id === 'gemuetlich' || this.prost.active || this.busy || this.isVomiting) return;
+    this.nextDuelIn -= dt;
+    if (this.nextDuelIn > 0) return;
+    this.nextDuelIn = this.rng.range(EVENTS.duel.minInterval, EVENTS.duel.maxInterval);
+    let best: Npc | null = null;
+    let bestD = EVENTS.duel.radius;
+    for (const n of this.npcs) {
+      if (n.role !== 'visitor' || n.family || n.state === 'down') continue;
+      const dd = dist(n.pos, this.player.pos);
+      if (dd < bestD) { bestD = dd; best = n; }
+    }
+    if (!best) return;
+    const npcPerfect = this.rng.chance(EVENTS.duel.npcPerfectChance);
+    this.duel = { active: true, npcId: best.id, timeLeft: EVENTS.duel.windowSeconds, npcPerfect };
+    // Fair bleiben: wer gerade gerülpst hat, darf trotzdem antreten
+    this.player.burpCooldown = 0;
+    this.events.push({ type: 'duelStart', npcId: best.id, npcPerfect });
+    this.say(best.id, this.rng.pick(LINES.duelStart));
+  }
+
+  /**
+   * Duell entscheiden: Ein perfekter Rülpser gewinnt immer. Gegen einen nicht-perfekten
+   * Herausforderer reicht auch ein zu kurzer, solange er nicht danebengeht.
+   */
+  private resolveDuel(quality: BurpQuality | null, failed: boolean): void {
+    const d = this.duel;
+    if (!d.active) return;
+    const won = quality === 'perfect' || (quality === 'weak' && !failed && !d.npcPerfect);
+    this.duel = { active: false, npcId: -1, timeLeft: 0, npcPerfect: false };
+    if (won) {
+      this.stats.duelsWon++;
+      const pp = this.player.pos;
+      const spot = { x: pp.x + 40, y: pp.y + 10 };
+      this.collideWithWorld(spot, 10);
+      this.pickups.push({ id: this.nextId++, kind: 'drink', drink: EVENTS.duel.prizeDrink, pos: spot, source: 'field', ttl: 25 });
+    }
+    this.events.push({ type: 'duelEnd', npcId: d.npcId, won, quality, npcPerfect: d.npcPerfect });
+    this.say(d.npcId, this.rng.pick(won ? LINES.duelWin : LINES.duelLose));
   }
 
   // --- Stimmung, Uhr, Ende -------------------------------------------------

@@ -100,6 +100,7 @@ export const SIDE_GOAL_POOL: SideGoalDef[] = [
   { id: 'lukas80', text: 'Hau den Lukas: 80 %', atEnd: false, check: (c) => c.stats.bestLukas >= 0.8 },
   { id: 'riesenrad', text: 'Einmal Riesenrad fahren', atEnd: false, check: (c) => c.stats.riesenradRides >= 1 },
   { id: 'brotzeit5', text: '5 Brotzeiten', atEnd: false, check: (c) => c.stats.foods >= 5 },
+  { id: 'duell', text: 'Ein Rülps-Duell gewinnen', atEnd: false, check: (c) => c.stats.duelsWon >= 1 },
   { id: 'kotzfrei', text: 'Kotzfrei bis 23:00', atEnd: true, check: (c) => survived(c) && c.stats.vomits === 0 },
   { id: 'keinRempler', text: 'Keinem Rempler in die Arme laufen', atEnd: true, check: (c) => survived(c) && c.stats.rempler === 0 },
   { id: 'zwei', text: 'Mit 2,0 ‰ zum Zapfenstreich', atEnd: true, check: (c) => survived(c) && c.promille >= 2 },

@@ -32,6 +32,8 @@ export interface Strategy {
   lukasAim?(rng: Rng): number;
   /** Bei hohem Pegel den Biergarten meiden (wegen der Security)? */
   avoidSecurity?: boolean;
+  /** Rülps-Duelle annehmen? Standard: ja */
+  acceptsDuel?: boolean;
 }
 
 const SWEET_MID = (BURP.sweetStart + BURP.sweetEnd) / 2;
@@ -81,7 +83,7 @@ export class Bot {
     // Rülpsen: halten, bis die gewünschte Ladezeit erreicht ist, dann loslassen
     if (g.player.burpCharging) {
       cmd.burpHeld = g.player.burpCharge + dt < this.burpTarget;
-    } else if (g.burpReady && this.strategy.shouldBurp(m, g, this.rng)) {
+    } else if (g.burpReady && (this.strategy.shouldBurp(m, g, this.rng) || (g.duel.active && this.strategy.acceptsDuel !== false))) {
       cmd.burpHeld = true;
       this.burpTarget = this.strategy.burpHold?.(this.rng) ?? SWEET_MID;
     }
@@ -208,6 +210,7 @@ export const spamBot: Strategy = {
   wants: (item) => item.kind === 'drink' && item.id === 'mass',
   joinProst: () => true,
   shouldBurp: () => false,
+  acceptsDuel: false,
 };
 
 /** Trinkt alles, was Promille bringt, rülpst bei Druck, isst nur im Notfall. */

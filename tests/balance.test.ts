@@ -9,7 +9,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { STRATEGIES, playRound, summarize, type RunSummary } from './support/bots';
 
 const env = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env ?? {};
-const SEED_COUNT = Number(env.BALANCE_SEEDS ?? 20);
+const SEED_COUNT = Number(env.BALANCE_SEEDS ?? 30);
 const SEEDS = Array.from({ length: SEED_COUNT }, (_, i) => 1000 + i * 7919);
 
 describe('Balance-Bots', () => {

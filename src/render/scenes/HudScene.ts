@@ -172,7 +172,12 @@ export class HudScene extends Phaser.Scene {
     this.alertText.setText(alert).setColor(s.isWarning ? COLORS.vomit : '#ff8ad8')
       .setScale(alert ? 1 + Math.sin(this.t * 8) * 0.04 : 1);
 
-    if (s.prost.active) {
+    if (s.duel.active) {
+      const key = this.game_.touch ? '💨' : 'R';
+      const hint = s.duel.npcPerfect ? 'Der is guad – nur PERFEKT gewinnt!' : 'Rülps, aber ned daneben!';
+      this.prostText.setText(`RÜLPS-DUELL!  ${key} halten, im Grünen loslassen!\n${hint}  ${Math.max(0, s.duel.timeLeft).toFixed(1).replace('.', ',')} s`)
+        .setScale(1 + Math.sin(this.t * 8) * 0.04).setColor('#8fd3ff');
+    } else if (s.prost.active) {
       const key = this.game_.touch ? 'Trink-Button' : 'E';
       const period = 60 / EVENTS.prost.beatBpm;
       const pulse = Math.exp(-((s.prost.elapsed % period) / period) * 5);

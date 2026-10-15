@@ -68,6 +68,7 @@ export class GameScene extends Phaser.Scene {
   private focusArrow!: Phaser.GameObjects.Image;
   private focusLabel!: Phaser.GameObjects.Text;
   private prostMark!: Phaser.GameObjects.Text;
+  private duelMark!: Phaser.GameObjects.Text;
   private prostRing!: Phaser.GameObjects.Graphics;
   private burpMeter!: Phaser.GameObjects.Graphics;
   private night!: Phaser.GameObjects.Rectangle;
@@ -316,6 +317,7 @@ export class GameScene extends Phaser.Scene {
     this.focusArrow = this.add.image(0, 0, 'arrow').setDepth(DEPTH.ui).setVisible(false);
     this.focusLabel = this.add.text(0, 0, '', textStyle(20)).setOrigin(0.5, 1).setDepth(DEPTH.ui).setVisible(false);
     this.prostMark = this.add.text(0, 0, 'PROST!', textStyle(36, COLORS.gold, { strokeThickness: 7 })).setOrigin(0.5, 1).setDepth(DEPTH.ui).setVisible(false);
+    this.duelMark = this.add.text(0, 0, 'DUELL!', textStyle(32, '#8fd3ff', { strokeThickness: 7 })).setOrigin(0.5, 1).setDepth(DEPTH.ui).setVisible(false);
     this.prostRing = this.add.graphics().setDepth(DEPTH.ui);
     this.burpMeter = this.add.graphics().setDepth(DEPTH.ui);
   }
@@ -588,6 +590,9 @@ export class GameScene extends Phaser.Scene {
       this.prostRing.lineStyle(3, onBeat ? 0x7ed957 : 0xffffff, pulse * 0.8);
       this.prostRing.strokeCircle(prostNpc.pos.x, prostNpc.pos.y - 24, 34 + (1 - pulse) * 26);
     } else this.prostMark.setVisible(false);
+    const duelNpc = s.duel.active ? s.findNpc(s.duel.npcId) : undefined;
+    this.duelMark.setVisible(!!duelNpc);
+    if (duelNpc) this.duelMark.setPosition(duelNpc.pos.x, duelNpc.pos.y - 70 + Math.sin(t * 9) * 4).setScale(1 + Math.sin(t * 7) * 0.06);
     this.renderBurpMeter();
 
     if (f && f.type !== 'prost' && !this.ending) {
@@ -778,6 +783,23 @@ export class GameScene extends Phaser.Scene {
       }
       case 'npcDown':
         break;
+      case 'duelStart':
+        audio.play('burp', { rate: 0.7, volume: 0.6 });
+        break;
+      case 'duelEnd': {
+        const npc = this.state.findNpc(e.npcId);
+        if (npc && e.quality !== null) {
+          // Der Herausforderer kontert
+          this.time.delayedCall(450, () => {
+            audio.play('burp', { rate: e.npcPerfect ? 0.65 : 1.3 });
+            this.burpFx.explode(e.npcPerfect ? 22 : 8, npc.pos.x, npc.pos.y - 40);
+          });
+        }
+        this.floatText(pp.x, pp.y - 140, e.won ? 'Duell gewonnen! Freimaß!' : e.quality === null ? 'Duell verpasst…' : 'Duell verloren…',
+          e.won ? COLORS.gold : '#cfd8e3', 30);
+        if (e.won) this.confettiFx.explode(40, pp.x, pp.y - 40);
+        break;
+      }
       case 'sideGoal':
         audio.play('win', { volume: 0.4, rate: 1.3 });
         this.floatText(pp.x, pp.y - 150, `Aufgabe: ${e.text} ✅`, '#8cff7a', 26);

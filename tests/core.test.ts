@@ -551,6 +551,49 @@ describe('Welt: Gegenmittel und Chancen', () => {
   });
 });
 
+describe('Rülps-Duell', () => {
+  const startDuel = (seed = 31) => {
+    const g = new GameState(seed);
+    g.elapsed = ROUND.durationSeconds * 0.41; // Stimmung
+    let guard = 0;
+    while (!g.duel.active && guard++ < 60 * 90) {
+      g.meters.kotz = 0; g.meters.sprudel = 0; g.meters.misch = 0;
+      g.step(ROUND.fixedStep, NO_COMMAND);
+    }
+    return g;
+  };
+  const burp = (g: GameState, seconds: number) => {
+    for (let i = 0; i < Math.round(seconds / ROUND.fixedStep); i++) g.step(ROUND.fixedStep, { ...NO_COMMAND, burpHeld: true });
+    g.step(ROUND.fixedStep, NO_COMMAND);
+  };
+
+  it('Ab der Stimmung fordert ein Besucher heraus, der Rülpser ist sofort bereit', () => {
+    const g = startDuel();
+    expect(g.duel.active).toBe(true);
+    expect(g.burpReady).toBe(true);
+    expect(g.prost.active).toBe(false);
+  });
+
+  it('Perfekter Rülpser gewinnt eine Freimaß', () => {
+    const g = startDuel();
+    const before = new Set(g.pickups.map((p) => p.id));
+    burp(g, (BURP.sweetStart + BURP.sweetEnd) / 2);
+    expect(g.duel.active).toBe(false);
+    expect(g.stats.duelsWon).toBe(1);
+    const prize = g.pickups.filter((p) => !before.has(p.id) && dist(p.pos, g.player.pos) < 80);
+    expect(prize.map((p) => p.drink)).toEqual(['mass']);
+  });
+
+  it('Zu lang gehalten verliert, verpasst auch', () => {
+    const g = startDuel();
+    burp(g, BURP.sweetEnd + 0.2);
+    expect(g.stats.duelsWon).toBe(0);
+    const h = startDuel(32);
+    while (h.duel.active) h.step(ROUND.fixedStep, NO_COMMAND);
+    expect(h.stats.duelsWon).toBe(0);
+  });
+});
+
 describe('Simulation', () => {
   it('Bedienungen bleiben nicht dauerhaft hängen und liefern Getränke aus', () => {
     const g = new GameState(99);

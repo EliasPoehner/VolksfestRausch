@@ -167,6 +167,14 @@ export interface ProstState {
   elapsed: number;
 }
 
+export interface DuelState {
+  active: boolean;
+  npcId: number;
+  timeLeft: number;
+  /** Rülpst der Herausforderer selbst perfekt? Dann gewinnt nur ein perfekter Rülpser */
+  npcPerfect: boolean;
+}
+
 export interface GameStats {
   drinks: number;
   foods: number;
@@ -194,6 +202,8 @@ export interface GameStats {
   securityPushes: number;
   /** Lebkuchenherz hat vor dem Sanka gerettet */
   heartSaves: number;
+  /** Gewonnene Rülps-Duelle */
+  duelsWon: number;
   /** Welche Getränkesorten getrunken wurden */
   drinkKinds: DrinkId[];
 }
