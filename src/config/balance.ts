@@ -104,13 +104,63 @@ export const ROUND = {
 };
 
 // ---------------------------------------------------------------------------
+// Dramaturgie des Abends: Phasen
+// ---------------------------------------------------------------------------
+
+export type EveningPhaseId = 'gemuetlich' | 'stimmung' | 'lastOrder';
+
+export interface EveningPhaseConfig {
+  id: EveningPhaseId;
+  /** Anzeigename (HUD) */
+  name: string;
+  /** Ab dieser In-Game-Stunde gilt die Phase */
+  fromHour: number;
+  /** Große Einblendung beim Phasenwechsel (Zeile 1 / Zeile 2) */
+  banner: string;
+  subline: string;
+  /** Faktor auf den Abstand zwischen zwei "Prost!"-Rufen (< 1 = häufiger) */
+  prostIntervalFactor: number;
+  /** Faktor auf das Spawn-Intervall der Wiesen-Pickups (< 1 = mehr Nachschub) */
+  fieldSpawnIntervalFactor: number;
+  /** Faktor auf die Promille aus Getränken und "Prost!" */
+  drinkPromilleFactor: number;
+  /** Faktor auf den Kotz aus Getränken und "Prost!" (auch den verzögerten) */
+  drinkKotzFactor: number;
+  /** Faktor auf den Promille-Abbau (`METERS.promille`): in der Stimmung macht die Leber Überstunden */
+  liverFactor: number;
+  /** Lautstärke der Blasmusik (0–1, nur Renderer) */
+  musicVolume: number;
+}
+
+/** Aufsteigend nach `fromHour`. Die erste Phase gilt ab Rundenbeginn. */
+export const PHASES: EveningPhaseConfig[] = [
+  {
+    id: 'gemuetlich', name: 'Gemütlich', fromHour: 18, banner: '', subline: '',
+    prostIntervalFactor: 1.35, fieldSpawnIntervalFactor: 1, drinkPromilleFactor: 1, drinkKotzFactor: 1,
+    liverFactor: 1, musicVolume: 0.22,
+  },
+  {
+    id: 'stimmung', name: 'Stimmung', fromHour: 20, banner: '20:00 – Jetzt kocht\'s Zelt!', subline: 'Mehr Prost, mehr Nachschub',
+    prostIntervalFactor: 0.6, fieldSpawnIntervalFactor: 0.7, drinkPromilleFactor: 1, drinkKotzFactor: 1,
+    liverFactor: 1.25, musicVolume: 0.35,
+  },
+  {
+    id: 'lastOrder', name: 'Last Order', fromHour: 22, banner: '22:00 – LAST ORDER!', subline: 'Getränke +50 % Promille – aber Obacht!',
+    prostIntervalFactor: 0.8, fieldSpawnIntervalFactor: 0.8, drinkPromilleFactor: 1.5, drinkKotzFactor: 1.35,
+    liverFactor: 1, musicVolume: 0.5,
+  },
+];
+
+// ---------------------------------------------------------------------------
 // Leisten-Raten & Schwellen
 // ---------------------------------------------------------------------------
 
 export const METERS = {
   promille: {
-    /** Abbau pro Sekunde (Leber arbeitet) */
-    decayPerSecond: 0.0018,
+    /** Grund-Abbau pro Sekunde (Leber arbeitet); wird je Phase mit `liverFactor` multipliziert */
+    decayPerSecond: 0.0015,
+    /** Zusätzlicher Abbau pro Sekunde je 1 ‰: wer früh hoch aufbaut, verliert mehr (ebenfalls × `liverFactor`) */
+    decayPerPromillePerSecond: 0.003,
   },
   kotz: {
     max: 100,

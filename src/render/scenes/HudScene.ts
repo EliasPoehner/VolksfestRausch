@@ -3,7 +3,7 @@
  * Doppeltsehen nicht auf die Anzeigen.
  */
 import Phaser from 'phaser';
-import { METERS } from '../../config/balance';
+import { METERS, PHASES } from '../../config/balance';
 import { formatPromille, type GameEvent } from '../../core';
 import { audio } from '../../audio/AudioManager';
 import type { GameScene } from './GameScene';
@@ -20,6 +20,7 @@ export class HudScene extends Phaser.Scene {
   private g!: Phaser.GameObjects.Graphics;
   private promilleText!: Phaser.GameObjects.Text;
   private clockText!: Phaser.GameObjects.Text;
+  private phaseText!: Phaser.GameObjects.Text;
   private statusText!: Phaser.GameObjects.Text;
   private alertText!: Phaser.GameObjects.Text;
   private prostText!: Phaser.GameObjects.Text;
@@ -64,7 +65,7 @@ export class HudScene extends Phaser.Scene {
     this.g = this.add.graphics();
 
     this.clockText = this.add.text(W - 150, 47, '18:00', textStyle(40, COLORS.cream)).setOrigin(0.5);
-    this.add.text(W - 150, 16, 'BIS ZAPFENSTREICH 23:00', textStyle(12, '#cfd8e3', { strokeThickness: 3 })).setOrigin(0.5, 0);
+    this.phaseText = this.add.text(W - 150, 16, '', textStyle(12, '#cfd8e3', { strokeThickness: 3 })).setOrigin(0.5, 0);
 
     this.statusText = this.add.text(16, 94, '', textStyle(18, COLORS.cream, { strokeThickness: 4 }));
     this.alertText = this.add.text(W / 2, 112, '', textStyle(26, '#ff8ad8')).setOrigin(0.5, 0);
@@ -102,6 +103,8 @@ export class HudScene extends Phaser.Scene {
     this.promilleText.setText(formatPromille(m.promille));
     this.clockText.setText(s.clock);
     this.clockText.setColor(s.timeLeft < 20 ? COLORS.gold : COLORS.cream);
+    const lastOrder = s.evening.id === 'lastOrder';
+    this.phaseText.setText(`${s.evening.name.toUpperCase()}  ·  BIS 23:00`).setColor(lastOrder ? COLORS.gold : '#cfd8e3');
 
     // Balken weich nachziehen
     const ease = Math.min(1, dt * 8);
@@ -155,7 +158,12 @@ export class HudScene extends Phaser.Scene {
 
   /** Wird von der GameScene für passende Events aufgerufen */
   handleEvent(e: GameEvent): void {
-    if (e.type === 'hour') this.flash(`${e.hour}:00 Uhr – a Gaudi!`);
+    // Zur vollen Stunde – außer es beginnt gerade eine neue Phase (die hat ihr eigenes Banner)
+    if (e.type === 'hour' && !PHASES.some((p) => p.fromHour === e.hour)) this.flash(`${e.hour}:00 Uhr – a Gaudi!`);
+    if (e.type === 'phaseChange') {
+      const p = PHASES.find((x) => x.id === e.phase);
+      if (p) this.flash(`${p.banner}\n${p.subline}`);
+    }
     if (e.type === 'gameEnd' && e.reason === 'zapfenstreich') this.flash('ZAPFENSTREICH!\nGeschafft!');
     if (e.type === 'vomitSurvived') {
       const left = e.max - e.count;

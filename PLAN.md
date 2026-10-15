@@ -41,15 +41,26 @@ Spiel: 2D-Volksfest-Browserspiel (Vite + TypeScript + Phaser 3). Ziel: bis 23:00
 
 Beobachtung 1 („gute Spieler kotzen nie“) stimmt damit nur halb: Das Kotz-Netz greift auch beim klugen Bot, kostet ihn aber wenig.
 
-## Schritt 2 – C: Dramaturgie des Abends (Zeit wird mechanisch)
+## Schritt 2 – C: Dramaturgie des Abends (Zeit wird mechanisch) ✅
 
-- Phasen als Konfiguration in `balance.ts` (z. B. `PHASES`), im Core über `hour` abgefragt.
-  - 18–20 Uhr: ruhig (weniger Prost, Familien-NPCs).
-  - 20–22 Uhr: Stimmung steigt (mehr Prost-Events, Blasmusik lauter, Happy Hour mit höherem Spawn).
-  - ab 22 Uhr „Last Order“: letzte Runde, z. B. Getränke +50 % Promille, aber höheres Kotz-Risiko.
-- Promille-Abbau/„Leber“ spürbar machen (z. B. Abbau steigt nachts oder hängt an einem Perk).
-- Neue Events (`events.ts`): `phaseChange`; HUD-Banner dafür (`HudScene.handleEvent`).
-- Tests: Phasenwechsel zur richtigen Uhrzeit, Multiplikatoren wirken.
+- [x] Phasen als Konfiguration in `balance.ts` (`PHASES`), im Core über `eveningAt(hour)` abgefragt, `GameState.evening` hält die aktuelle Phase und setzt `Meters.mods`.
+  - [x] 18–20 Uhr *Gemütlich*: Prost-Abstand ×1,35, Musik leise.
+  - [x] 20–22 Uhr *Stimmung*: Prost-Abstand ×0,6, Wiesen-Spawn ×0,7 (Happy Hour), Musik lauter, Leber ×1,25.
+  - [x] ab 22 Uhr *Last Order*: Getränke und Prost +50 % Promille, +35 % Kotz, Musik am lautesten.
+  - [ ] Familien-NPCs in der ruhigen Phase (offen, braucht neue NPC-Rolle und Grafik; passt gut zu Schritt 4).
+- [x] Leber spürbar: Abbau = (0,0015 + 0,003 × ‰) pro Sekunde × Phasen-Faktor. Hoher Pegel baut schneller ab.
+- [x] Event `phaseChange` mit HUD-Banner, Phasenname über der Uhr, Konfetti und Musik-Lautstärke. Das Getränk-Event trägt jetzt die tatsächlich gewonnenen Promille (`+0,48 ‰` in der Last Order).
+- [x] Tests: Phasenwechsel zur richtigen Uhrzeit (je genau einmal), Multiplikatoren, Leber, Event-Promille. Neuer Balance-Bot „Klug + Endspurt“ muss den klugen Bot um mindestens 5 % schlagen.
+
+**Warum die Leber pegelabhängig ist:** Mit konstantem Abbau hatte der kluge Bot um 20 Uhr schon 2,2 ‰ und stand danach still. Die Last Order brachte kaum etwas (+0,05 Score). Mit der pegelabhängigen Leber steigt die Kurve bis zum Schluss, und der Endspurt lohnt sich.
+
+| Strategie (20 Seeds) | Ø Score | Ø ‰ | Sanka | mind. 1× gekotzt |
+|---|---|---|---|---|
+| Maß-Spam | 1,18 | 3,10 | 100 % | 100 % |
+| Gierig | 1,58 | 3,23 | 85 % | 95 % |
+| Wahllos | 0,96 | 2,54 | 100 % | 100 % |
+| Klug | 2,03 | 2,10 | 5 % | 20 % |
+| Klug + Endspurt | 2,20 | 2,27 | 5 % | 20 % |
 
 ## Schritt 3 – D: Rülpsen und Prost als Skill-Mechaniken
 

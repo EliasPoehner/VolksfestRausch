@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { BURP, DRINKS, EVENTS, FOODS, METERS, PLAYER, ROUND, SCORING, VOMIT } from '../src/config/balance';
-import { GameState, NO_COMMAND } from '../src/core/GameState';
+import { BURP, DRINKS, EVENTS, FOODS, METERS, PHASES, PLAYER, ROUND, SCORING, VOMIT } from '../src/config/balance';
+import { GameState, NO_COMMAND, eveningAt } from '../src/core/GameState';
 import { Meters } from '../src/core/Meters';
 import { clockLabel, computeScore, titleFor } from '../src/core/scoring';
 
@@ -260,6 +260,64 @@ describe('GameState', () => {
     g.step(ROUND.fixedStep, { ...NO_COMMAND, burp: true });
     g.step(ROUND.fixedStep, { ...NO_COMMAND, burp: true });
     expect(g.stats.burps).toBe(1);
+  });
+});
+
+describe('Abend-Phasen', () => {
+  const lastOrder = PHASES.find((p) => p.id === 'lastOrder')!;
+
+  it('Die Phase richtet sich nach der Uhrzeit', () => {
+    expect(eveningAt(18).id).toBe('gemuetlich');
+    expect(eveningAt(19.99).id).toBe('gemuetlich');
+    expect(eveningAt(20).id).toBe('stimmung');
+    expect(eveningAt(21.5).id).toBe('stimmung');
+    expect(eveningAt(22).id).toBe('lastOrder');
+    expect(eveningAt(23).id).toBe('lastOrder');
+  });
+
+  it('Phasenwechsel kommen zur richtigen Uhrzeit, je genau einmal, und setzen die Modifikatoren', () => {
+    const g = new GameState(5);
+    expect(g.evening.id).toBe('gemuetlich');
+    const changes: { phase: string; hour: number }[] = [];
+    while (g.phase === 'playing') {
+      g.meters.kotz = 0; g.meters.sprudel = 0; g.meters.misch = 0;
+      g.step(ROUND.fixedStep, NO_COMMAND);
+      for (const e of g.events.drain()) if (e.type === 'phaseChange') changes.push({ phase: e.phase, hour: g.hour });
+    }
+    expect(changes.map((c) => c.phase)).toEqual(['stimmung', 'lastOrder']);
+    expect(changes[0].hour).toBeCloseTo(20, 1);
+    expect(changes[1].hour).toBeCloseTo(22, 1);
+    expect(g.meters.mods).toEqual({ promille: lastOrder.drinkPromilleFactor, kotz: lastOrder.drinkKotzFactor, liver: lastOrder.liverFactor });
+  });
+
+  it('Last Order: Getränke bringen mehr Promille und mehr Kotz', () => {
+    const m = new Meters();
+    m.mods = { promille: lastOrder.drinkPromilleFactor, kotz: lastOrder.drinkKotzFactor, liver: 1 };
+    const gained = m.drink('mass', 0);
+    expect(gained).toBeCloseTo(DRINKS.mass.promille * lastOrder.drinkPromilleFactor);
+    expect(m.promille).toBeCloseTo(gained);
+    expect(m.kotz).toBeCloseTo(DRINKS.mass.kotz * lastOrder.drinkKotzFactor);
+  });
+
+  it('Das Getränk-Event meldet die tatsächlich gewonnenen Promille', () => {
+    const g = new GameState(3);
+    g.meters.mods = { promille: 1.5, kotz: 1, liver: 1 };
+    g.pickups.push({ id: 9999, kind: 'drink', drink: 'radler', pos: { ...g.player.pos }, source: 'field', ttl: 99 });
+    g.step(ROUND.fixedStep, { ...NO_COMMAND, action: true });
+    const e = g.events.drain().find((x) => x.type === 'drink');
+    expect(e && e.type === 'drink' && e.promille).toBeCloseTo(DRINKS.radler.promille * 1.5);
+  });
+
+  it('Die Leber baut bei hohem Pegel schneller ab, die Phase verstärkt das', () => {
+    const decay = (start: number, liver: number) => {
+      const m = new Meters();
+      m.promille = start; m.mods = { promille: 1, kotz: 1, liver };
+      m.update(10);
+      return start - m.promille;
+    };
+    expect(decay(1, 1)).toBeCloseTo((METERS.promille.decayPerSecond + METERS.promille.decayPerPromillePerSecond) * 10, 2);
+    expect(decay(3, 1)).toBeGreaterThan(decay(1, 1));
+    expect(decay(2, 1.25)).toBeGreaterThan(decay(2, 1));
   });
 });
 

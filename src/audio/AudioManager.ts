@@ -68,6 +68,13 @@ class AudioManager {
     this.music.rate(1 - Math.min(0.12, amount));
   }
 
+  /** Lautstärke der Blasmusik (0–1), z. B. je Abend-Phase */
+  setMusicVolume(volume: number, fadeMs = 1500): void {
+    if (!this.music) return;
+    if (this.music.playing()) this.music.fade(this.music.volume(), volume, fadeMs);
+    else this.music.volume(volume);
+  }
+
   get muted(): boolean { return this._muted; }
 
   toggleMute(): boolean {

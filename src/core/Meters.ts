@@ -13,6 +13,16 @@ import type { VomitCause } from './events';
 
 export interface DrinkLogEntry { drink: DrinkId; time: number }
 
+/** Modifikatoren der aktuellen Abend-Phase (siehe `PHASES` in balance.ts) */
+export interface PhaseMods {
+  /** Faktor auf Promille aus Getränken und "Prost!" */
+  promille: number;
+  /** Faktor auf Kotz aus Getränken und "Prost!" */
+  kotz: number;
+  /** Faktor auf den Promille-Abbau */
+  liver: number;
+}
+
 export class Meters {
   promille = 0;
   kotz = 0;
@@ -23,6 +33,9 @@ export class Meters {
   pendingKotz = 0;
   /** > 0: Magen ist nach dem Kotzen leer, Kotz wirkt stärker (s) */
   emptyStomach = 0;
+
+  /** Wird von GameState beim Phasenwechsel gesetzt */
+  mods: PhaseMods = { promille: 1, kotz: 1, liver: 1 };
 
   /** Letzte Getränke (für Mischmasch-Fenster) */
   private log: DrinkLogEntry[] = [];
@@ -47,11 +60,13 @@ export class Meters {
   /**
    * Ein Getränk trinken.
    * @param now Spielzeit in Sekunden (für das Mischmasch-Zeitfenster)
+   * @returns die tatsächlich gewonnenen Promille
    */
-  drink(id: DrinkId, now: number): void {
+  drink(id: DrinkId, now: number): number {
     const d = DRINKS[id];
     const absorb = 1 - METERS.magen.absorptionSlowAtFull * (this.magen / METERS.magen.max);
-    this.promille += d.promille * absorb;
+    const gained = d.promille * absorb * this.mods.promille;
+    this.promille += gained;
     this.sprudel = clamp(this.sprudel + d.sprudel, 0, METERS.sprudel.max);
 
     // Mischmasch: alle *anderen* Sorten, die im Zeitfenster getrunken wurden
@@ -64,15 +79,19 @@ export class Meters {
     );
     this.log.push({ drink: id, time: now });
 
-    this.addKotz(d.kotz * this.stomachFactor);
-    if (d.kotzDelayed) this.pendingKotz += d.kotzDelayed * this.stomachFactor;
+    const kotzFactor = this.stomachFactor * this.mods.kotz;
+    this.addKotz(d.kotz * kotzFactor);
+    if (d.kotzDelayed) this.pendingKotz += d.kotzDelayed * kotzFactor;
+    return gained;
   }
 
   /** Bonus-Schluck beim "Prost!"-Event (kein eigenes Getränk im Mischmasch-Sinn) */
-  prost(promille: number, sprudel: number, kotz: number): void {
-    this.promille += promille;
+  prost(promille: number, sprudel: number, kotz: number): number {
+    const gained = promille * this.mods.promille;
+    this.promille += gained;
     this.sprudel = clamp(this.sprudel + sprudel, 0, METERS.sprudel.max);
-    this.addKotz(kotz);
+    this.addKotz(kotz * this.mods.kotz);
+    return gained;
   }
 
   /** Etwas essen bzw. Wasser trinken. */
@@ -113,7 +132,8 @@ export class Meters {
 
   /** Zeitbasiertes Update (Abbau, passive Anstiege). */
   update(dt: number): void {
-    this.promille = Math.max(0, this.promille - METERS.promille.decayPerSecond * dt);
+    const liver = (METERS.promille.decayPerSecond + METERS.promille.decayPerPromillePerSecond * this.promille) * this.mods.liver;
+    this.promille = Math.max(0, this.promille - liver * dt);
     this.sprudel = Math.max(0, this.sprudel - METERS.sprudel.decayPerSecond * dt);
     this.misch = Math.max(0, this.misch - METERS.misch.decayPerSecond * dt);
     this.magen = Math.max(0, this.magen - METERS.magen.decayPerSecond * dt);

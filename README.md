@@ -20,7 +20,8 @@ Gebaut mit **Vite + TypeScript + Phaser 3 + Howler.js**. Das Ergebnis ist eine s
 
 ## Spielmechanik in Kürze
 
-- **Promille** = Score. Steigt mit Alkohol, sinkt langsam.
+- **Promille** = Score. Steigt mit Alkohol. Die **Leber** baut ab, und zwar umso schneller, je höher der Pegel ist. Wer früh vollgas gibt, verliert mehr.
+- **Der Abend hat drei Phasen**: *Gemütlich* (18–20 Uhr, wenig „Prost!“, leise Musik), *Stimmung* (20–22 Uhr, viel öfter „Prost!“, mehr Nachschub auf der Wiese, die Leber macht Überstunden), *Last Order* (ab 22 Uhr: Getränke bringen +50 % Promille, aber auch 35 % mehr Kotz). Ein Endspurt lohnt sich, die Phase steht im HUD über der Uhr.
 - **Kotzleiste** (0–100): bei 100 wird gekotzt. Steigt passiv mit dem Rausch, durch Getränke, Karussell und Autoscooter.
 - **Sprudel-Druck** (0–100): Kohlensäure. Über 80 steigt die Kotzleiste pro Sekunde, bei 100 kotzt man sofort. Rülpsen hilft.
 - **Mischmasch-Meter** (0–100): verschiedene Sorten innerhalb von 30 s. Ab 50 steigt die Kotzleiste doppelt so schnell, bei 100 kotzt man sofort.
@@ -49,7 +50,7 @@ npm run typecheck  # TypeScript prüfen
 npm run gen:audio  # Sounds & Blasmusik neu synthetisieren → public/assets/audio
 ```
 
-**Balance-Bots** (`tests/balance.test.ts`, Strategien in `tests/support/bots.ts`): Vier Bots (nur Maß, gierig, wahllos, klug) spielen je 20 komplette Runden über `GameState`. Die Tests prüfen z. B., dass kluges Spiel Maß-Spam deutlich schlägt und Spam fast immer im Sanka endet. Wer `balance.ts` ändert und hier Rot sieht, hat das Balancing gekippt. Mehr Runden für eine genauere Auswertung: `BALANCE_SEEDS=60 npm test`.
+**Balance-Bots** (`tests/balance.test.ts`, Strategien in `tests/support/bots.ts`): Fünf Bots (nur Maß, gierig, wahllos, klug, klug mit Endspurt in der Last Order) spielen je 20 komplette Runden über `GameState`. Die Tests prüfen z. B., dass kluges Spiel Maß-Spam deutlich schlägt, Spam fast immer im Sanka endet und sich der Endspurt lohnt. Wer `balance.ts` ändert und hier Rot sieht, hat das Balancing gekippt. Mehr Runden für eine genauere Auswertung: `BALANCE_SEEDS=60 npm test`.
 
 ## Build
 

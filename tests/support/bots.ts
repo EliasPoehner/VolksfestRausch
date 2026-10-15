@@ -212,7 +212,23 @@ export const smartBot: Strategy = {
   shouldBurp: (m) => m.sprudel > 35,
 };
 
-export const STRATEGIES = { spam: spamBot, greedy: greedyBot, random: randomBot, smart: smartBot };
+/**
+ * Wie der kluge Bot, nutzt aber die Last Order: ab 22 Uhr trinkt er mehr
+ * und lässt die Kotzleiste höher laufen, weil Getränke dann mehr bringen.
+ */
+export const lastOrderBot: Strategy = {
+  ...smartBot,
+  name: 'Klug + Endspurt',
+  wants: (item, m, g, rng) => {
+    if (g.evening.id !== 'lastOrder' || item.kind === 'food') return smartBot.wants(item, m, g, rng);
+    const d = DRINKS[item.id];
+    if (m.kotz + d.kotz * 2.7 > 72) return false;
+    if (m.sprudel + d.sprudel > 75) return false;
+    return item.id === 'mass' || item.id === 'weissbier';
+  },
+};
+
+export const STRATEGIES = { spam: spamBot, greedy: greedyBot, random: randomBot, smart: smartBot, lastOrder: lastOrderBot };
 
 export interface RunSummary {
   strategy: string;

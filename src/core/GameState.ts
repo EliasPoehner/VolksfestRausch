@@ -15,8 +15,8 @@
  * Der Renderer darf den Zustand LESEN, aber nicht verändern.
  */
 import {
-  BURP, DRINKS, DRUNK, EVENTS, FOODS, HAZARDS, LINES, PLAYER, ROUND, SPAWNS, VOMIT,
-  type DrinkId, type FoodId,
+  BURP, DRINKS, DRUNK, EVENTS, FOODS, HAZARDS, LINES, PHASES, PLAYER, ROUND, SPAWNS, VOMIT,
+  type DrinkId, type EveningPhaseConfig, type FoodId,
 } from '../config/balance';
 import {
   BENCHES, BENCH_SLOTS, BOOTHS, BOOTH_COUNTER_OFFSET, BUMPER_ARENA, CAROUSEL, CAROUSEL_POLE_RADIUS,
@@ -42,6 +42,13 @@ export interface PlayerCommand {
   action: boolean;
   /** R / Touch-Button wurde in diesem Schritt gedrückt */
   burp: boolean;
+}
+
+/** Die Abend-Phase, die zu einer In-Game-Stunde gilt. */
+export function eveningAt(hour: number): EveningPhaseConfig {
+  let current = PHASES[0];
+  for (const p of PHASES) if (hour >= p.fromHour) current = p;
+  return current;
 }
 
 export const NO_COMMAND: PlayerCommand = { move: { x: 0, y: 0 }, action: false, burp: false };
@@ -82,6 +89,8 @@ export class GameState {
   private fieldSpawnTimer = 0;
   private nextProstIn: number;
   private lastHour = ROUND.startHour;
+  /** Aktuelle Abend-Phase (Gemütlich, Stimmung, Last Order) */
+  evening: EveningPhaseConfig = PHASES[0];
   private playerLineTimer = 8;
   private wasWarning = false;
 
@@ -93,6 +102,7 @@ export class GameState {
       boostTimer: 0, prostBoostTimer: 0, vomitTimer: 0, vomitElapsed: 0,
     };
     this.nextProstIn = this.rng.range(EVENTS.prost.minInterval * 0.5, EVENTS.prost.maxInterval * 0.6);
+    this.applyEvening(PHASES[0]);
     this.buildWorld();
   }
 
@@ -482,7 +492,7 @@ export class GameState {
     const fieldCount = this.pickups.filter((p) => p.source === 'field').length;
     this.fieldSpawnTimer -= dt;
     if (this.fieldSpawnTimer <= 0 && fieldCount < SPAWNS.maxFieldPickups) {
-      this.fieldSpawnTimer = SPAWNS.fieldSpawnInterval;
+      this.fieldSpawnTimer = SPAWNS.fieldSpawnInterval * this.evening.fieldSpawnIntervalFactor;
       this.spawnFieldPickup();
     }
 
@@ -559,11 +569,11 @@ export class GameState {
     // "Prost!" hat Vorrang
     if (this.prost.active) {
       const boost = this.player.prostBoostTimer > 0 ? 2 : 1;
-      this.meters.prost(EVENTS.prost.bonusPromille * boost, EVENTS.prost.sprudel, EVENTS.prost.kotz);
+      const gained = this.meters.prost(EVENTS.prost.bonusPromille * boost, EVENTS.prost.sprudel, EVENTS.prost.kotz);
       this.stats.prosts++;
       this.stats.drinks++;
       this.prost = { active: false, npcId: -1, timeLeft: 0 };
-      this.events.push({ type: 'drink', drink: 'mass', pos: { ...this.player.pos }, viaProst: true });
+      this.events.push({ type: 'drink', drink: 'mass', pos: { ...this.player.pos }, viaProst: true, promille: gained });
       this.events.push({ type: 'prostEnd', joined: true });
       this.say(PLAYER_ID, 'Prooost!');
       return;
@@ -601,12 +611,12 @@ export class GameState {
   }
 
   private consumeDrink(id: DrinkId): void {
-    this.meters.drink(id, this.elapsed);
+    const gained = this.meters.drink(id, this.elapsed);
     const d = DRINKS[id];
     if (d.speedBoostSeconds) this.player.boostTimer = d.speedBoostSeconds;
     if (d.prostBoostSeconds) this.player.prostBoostTimer = d.prostBoostSeconds;
     this.stats.drinks++;
-    this.events.push({ type: 'drink', drink: id, pos: { ...this.player.pos }, viaProst: false });
+    this.events.push({ type: 'drink', drink: id, pos: { ...this.player.pos }, viaProst: false, promille: gained });
     if (this.rng.chance(0.45)) this.say(PLAYER_ID, this.rng.pick(LINES.drink));
   }
 
@@ -644,7 +654,7 @@ export class GameState {
     if (this.isVomiting) return;
     this.nextProstIn -= dt;
     if (this.nextProstIn > 0) return;
-    this.nextProstIn = this.rng.range(EVENTS.prost.minInterval, EVENTS.prost.maxInterval);
+    this.nextProstIn = this.rng.range(EVENTS.prost.minInterval, EVENTS.prost.maxInterval) * this.evening.prostIntervalFactor;
 
     // Nächstgelegenen Besucher wählen, der nicht zu weit weg ist
     let best: Npc | null = null;
@@ -690,6 +700,18 @@ export class GameState {
       this.events.push({ type: 'hour', hour: h });
       this.events.push({ type: 'confetti', pos: { ...this.player.pos } });
     }
+    const next = eveningAt(this.hour);
+    if (next.id !== this.evening.id) {
+      this.applyEvening(next);
+      this.events.push({ type: 'phaseChange', phase: next.id });
+      // Neuer Rhythmus: der nächste "Prost!"-Ruf kommt nicht später als im neuen Takt
+      this.nextProstIn = Math.min(this.nextProstIn, EVENTS.prost.maxInterval * next.prostIntervalFactor);
+    }
+  }
+
+  private applyEvening(phase: EveningPhaseConfig): void {
+    this.evening = phase;
+    this.meters.mods = { promille: phase.drinkPromilleFactor, kotz: phase.drinkKotzFactor, liver: phase.liverFactor };
   }
 
   private checkEnd(): void {

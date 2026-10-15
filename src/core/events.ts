@@ -6,14 +6,15 @@
  * Wichtig: Die Logik hängt NICHT vom Renderer ab – sie weiß nur,
  * *dass* etwas passiert ist, nicht *wie* es aussieht.
  */
-import type { DrinkId, FoodId } from '../config/balance';
+import type { DrinkId, EveningPhaseId, FoodId } from '../config/balance';
 import type { Vec2 } from './math';
 
 export type VomitCause = 'kotz' | 'sprudel' | 'misch';
 export type EndReason = 'vomit' | 'zapfenstreich';
 
 export type GameEvent =
-  | { type: 'drink'; drink: DrinkId; pos: Vec2; viaProst: boolean }
+  /** `promille` = tatsächlich gewonnene Promille (nach Magen und Phase) */
+  | { type: 'drink'; drink: DrinkId; pos: Vec2; viaProst: boolean; promille: number }
   | { type: 'food'; food: FoodId; pos: Vec2 }
   | { type: 'burp'; failed: boolean; pos: Vec2 }
   | { type: 'burpCooldown' }
@@ -27,6 +28,8 @@ export type GameEvent =
   | { type: 'controlsInverted' }
   | { type: 'confetti'; pos: Vec2 }
   | { type: 'hour'; hour: number }
+  /** Neue Abend-Phase (Gemütlich → Stimmung → Last Order) */
+  | { type: 'phaseChange'; phase: EveningPhaseId }
   /** Gekotzt, aber überstanden – das Spiel läuft weiter. `count` = wievielte Kotzerei, `max` = Sanka-Grenze */
   | { type: 'vomitSurvived'; cause: VomitCause; pos: Vec2; count: number; max: number }
   /** Das Stunden-Ende des Kontrollverlusts */

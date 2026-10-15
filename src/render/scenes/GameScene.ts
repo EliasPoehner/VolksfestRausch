@@ -9,7 +9,7 @@
  * Für eine Three.js-Version wird genau diese Datei (plus HudScene) ersetzt.
  */
 import Phaser from 'phaser';
-import { DRINKS, DRUNK, FOODS, ROUND } from '../../config/balance';
+import { DRUNK, FOODS, ROUND } from '../../config/balance';
 import {
   BENCHES, BUMPER_ARENA, CAROUSEL, LIGHT_STRINGS, PATHS, TENT, WORLD,
 } from '../../config/world';
@@ -95,6 +95,7 @@ export class GameScene extends Phaser.Scene {
     // Nur im Dev-Server: Zugriff für Debugging/Tests über die Browser-Konsole
     if (import.meta.env.DEV) (window as unknown as { __masskrug: GameScene }).__masskrug = this;
     this.cameras.main.fadeIn(300, 0, 0, 0);
+    audio.setMusicVolume(this.state.evening.musicVolume, 0);
     audio.startMusic();
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -557,7 +558,8 @@ export class GameScene extends Phaser.Scene {
         audio.play('gulp', { rate: Phaser.Math.FloatBetween(0.9, 1.15) });
         if (e.viaProst) audio.play('clink');
         this.foamFx.explode(10, e.pos.x, e.pos.y - 40);
-        const promille = e.viaProst ? 'Prost-Bonus!' : `+${DRINKS[e.drink].promille.toFixed(2).replace('.', ',')} ‰`;
+        const gained = `+${e.promille.toFixed(2).replace('.', ',')} ‰`;
+        const promille = e.viaProst ? `Prost! ${gained}` : gained;
         this.floatText(e.pos.x, e.pos.y - 70, promille, COLORS.gold);
         break;
       }
@@ -604,6 +606,11 @@ export class GameScene extends Phaser.Scene {
         break;
       case 'hour':
         audio.play('clink');
+        break;
+      case 'phaseChange':
+        audio.setMusicVolume(this.state.evening.musicVolume);
+        audio.play('prost');
+        this.confettiFx.explode(60, pp.x, pp.y - 40);
         break;
       case 'vomitSurvived':
         this.playVomitBurst(e.count, e.max);

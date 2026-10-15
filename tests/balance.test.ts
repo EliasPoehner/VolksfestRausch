@@ -42,6 +42,11 @@ describe('Balance-Bots', () => {
     expect(r.smart.avgScore).toBeGreaterThan(r.random.avgScore);
   });
 
+  it('Die Last Order lohnt sich: Endspurt schlägt gleichmäßiges kluges Spiel', () => {
+    expect(r.lastOrder.avgScore).toBeGreaterThan(r.smart.avgScore * 1.05);
+    expect(r.lastOrder.sankaRate).toBeLessThanOrEqual(0.15);
+  });
+
   it('Maß-Spam endet fast immer im Sanka', () => {
     expect(r.spam.sankaRate).toBeGreaterThan(0.8);
   });
