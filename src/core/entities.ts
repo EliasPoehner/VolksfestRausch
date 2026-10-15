@@ -38,6 +38,43 @@ export interface Player {
   vomitTimer: number;
   /** Zeit seit Beginn des Kontrollverlusts (s) */
   vomitElapsed: number;
+  /** Gerade beschäftigt (Klo, Riesenrad, Hau-den-Lukas) – dann kein Laufen */
+  activity: Activity | null;
+  /** Lebkuchenherz vom Hau-den-Lukas: rettet einmal vor dem Sanka */
+  lebkuchenherz: boolean;
+}
+
+export type ActivityKind = 'dixi' | 'riesenrad' | 'lukas';
+
+export interface Activity {
+  kind: ActivityKind;
+  /** Verstrichene Zeit (s) */
+  elapsed: number;
+  /** Gesamtdauer (s); beim Lukas die Höchstdauer */
+  total: number;
+  /** Dixi: Wartezeit (s), bevor man in die Kabine kommt */
+  queue: number;
+  /** Welche Kabine/Attraktion */
+  targetId: number;
+}
+
+/** Dixi-Klo-Kabine */
+export interface Dixi {
+  id: number;
+  rect: Rect;
+  door: Vec2;
+  /** > 0: besetzt bzw. wird geputzt */
+  cooldown: number;
+}
+
+/** Riesenrad oder Hau-den-Lukas */
+export interface Attraction {
+  id: number;
+  kind: 'riesenrad' | 'lukas';
+  /** Hier steht man zum Einsteigen/Zuschlagen */
+  spot: Vec2;
+  /** > 0: gerade nicht verfügbar */
+  cooldown: number;
 }
 
 export type PickupKind = 'drink' | 'food';
@@ -71,7 +108,7 @@ export interface Booth {
   cooldown: number;
 }
 
-export type NpcRole = 'visitor' | 'waitress';
+export type NpcRole = 'visitor' | 'waitress' | 'security';
 export type WaitressState = 'toTent' | 'refill' | 'deliver' | 'wait' | 'roam';
 
 export interface Npc {
@@ -92,7 +129,16 @@ export interface Npc {
   stuckTimer: number;
   /** Nur Bedienungen: */
   carrying: DrinkId | null;
-  state: WaitressState | 'idle' | 'walk';
+  /** 'down' = Bierleiche (liegt im Weg), 'leave' = geht heim, 'chase'/'patrol' = Security */
+  state: WaitressState | 'idle' | 'walk' | 'down' | 'leave' | 'chase' | 'patrol';
+  /** Torkelt herum und rempelt (ab der Stimmungs-Phase) */
+  drunk: boolean;
+  /** Teil einer Familie (nur am frühen Abend) */
+  family: boolean;
+  /** Kind: folgt dieser NPC-ID */
+  followId: number | null;
+  /** Pause nach einem Rempler bzw. einem Schubser der Security (s) */
+  bumpCooldown: number;
 }
 
 export interface BumperCar {
@@ -106,7 +152,7 @@ export interface BumperCar {
 
 /** Was der Spieler gerade aufnehmen könnte (für Hinweis "E: Maß Bier") */
 export interface InteractionFocus {
-  type: 'pickup' | 'booth' | 'waitress' | 'prost';
+  type: 'pickup' | 'booth' | 'waitress' | 'prost' | 'dixi' | 'riesenrad' | 'lukas';
   id: number;
   pos: Vec2;
   label: string;
@@ -135,6 +181,18 @@ export interface GameStats {
   maxPromille: number;
   /** Wie oft gekotzt wurde (inkl. dem letzten, falls der Sanka kam) */
   vomits: number;
+  dixiVisits: number;
+  riesenradRides: number;
+  /** Beste Hau-den-Lukas-Kraft (0–1) */
+  bestLukas: number;
+  /** Wie oft die Glocke geläutet hat */
+  lukasBells: number;
+  /** Rempler abbekommen */
+  rempler: number;
+  /** Von der Security rausgeschoben */
+  securityPushes: number;
+  /** Lebkuchenherz hat vor dem Sanka gerettet */
+  heartSaves: number;
 }
 
 export interface GameResult {

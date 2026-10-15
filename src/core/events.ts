@@ -9,6 +9,7 @@
 import type { DrinkId, EveningPhaseId, FoodId } from '../config/balance';
 import type { Vec2 } from './math';
 import type { BurpQuality } from './Meters';
+import type { ActivityKind } from './entities';
 
 export type VomitCause = 'kotz' | 'sprudel' | 'misch';
 export type EndReason = 'vomit' | 'zapfenstreich';
@@ -43,7 +44,21 @@ export type GameEvent =
   | { type: 'vomitRecovered' }
   /** Letztes Kotzen: der Sanka kommt */
   | { type: 'vomit'; cause: VomitCause; pos: Vec2 }
-  | { type: 'gameEnd'; reason: EndReason };
+  | { type: 'gameEnd'; reason: EndReason }
+  /** Klo, Riesenrad, Hau-den-Lukas: Beginn / Ende (beim Dixi auch 'inside' = jetzt in der Kabine) */
+  | { type: 'activity'; kind: ActivityKind; stage: 'start' | 'inside' | 'end'; pos: Vec2 }
+  /** Hau-den-Lukas: Schlag mit Kraft 0–1 und Preis */
+  | { type: 'lukasStrike'; power: number; prize: 'heart' | 'mass' | 'none'; pos: Vec2 }
+  /** Ein torkelnder Besucher hat einen angerempelt */
+  | { type: 'rempler'; npcId: number; pos: Vec2 }
+  /** Die Security schiebt einen aus dem Biergarten */
+  | { type: 'securityPush'; npcId: number; pos: Vec2 }
+  /** Ein Besucher schläft als Bierleiche ein */
+  | { type: 'npcDown'; npcId: number }
+  /** NPC hat das Fest verlassen (Renderer entfernt die Figur) */
+  | { type: 'npcGone'; npcId: number }
+  /** Das Lebkuchenherz hat vor dem Sanka gerettet */
+  | { type: 'heartSaved'; pos: Vec2 };
 
 export class EventQueue {
   private items: GameEvent[] = [];

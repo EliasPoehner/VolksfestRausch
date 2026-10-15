@@ -9,9 +9,9 @@
  * Für eine Three.js-Version wird genau diese Datei (plus HudScene) ersetzt.
  */
 import Phaser from 'phaser';
-import { BURP, DRUNK, EVENTS, FOODS, ROUND } from '../../config/balance';
+import { ATTRACTIONS, BURP, DRUNK, EVENTS, FOODS, ROUND } from '../../config/balance';
 import {
-  BENCHES, BUMPER_ARENA, CAROUSEL, LIGHT_STRINGS, PATHS, TENT, WORLD,
+  BENCHES, BUMPER_ARENA, CAROUSEL, LIGHT_STRINGS, LUKAS, PATHS, RIESENRAD, TENT, WORLD,
 } from '../../config/world';
 import { GameState, NO_COMMAND, PLAYER_ID, type GameEvent, type Npc, type Pickup } from '../../core';
 import { InputManager } from '../../input/InputManager';
@@ -56,6 +56,14 @@ export class GameScene extends Phaser.Scene {
   private boothViews = new Map<number, { goods: Phaser.GameObjects.Image[]; soldOut: Phaser.GameObjects.Text }>();
   private carousel!: Phaser.GameObjects.Image;
   private carouselCrown!: Phaser.GameObjects.Image;
+  private wheel!: Phaser.GameObjects.Image;
+  private gondolas: Phaser.GameObjects.Image[] = [];
+  private wheelAngle = 0;
+  private lukasPuck!: Phaser.GameObjects.Image;
+  private lukasPuckTween: Phaser.Tweens.Tween | null = null;
+  private dixiSigns = new Map<number, Phaser.GameObjects.Text>();
+  private attractionSigns = new Map<number, Phaser.GameObjects.Text>();
+  private heartIcon!: Phaser.GameObjects.Image;
   private bubbles: Bubble[] = [];
   private focusArrow!: Phaser.GameObjects.Image;
   private focusLabel!: Phaser.GameObjects.Text;
@@ -188,6 +196,52 @@ export class GameScene extends Phaser.Scene {
       else g.fillRect(a.x - 8, a.y + a.h - (t - 2 * a.w - a.h) - 20, 8, 20);
     }
     this.add.text(a.x + a.w / 2, a.y - 34, 'AUTOSCOOTER', textStyle(30, '#8fd3ff')).setOrigin(0.5).setDepth(a.y);
+
+    // Dixi-Klos
+    for (const d of this.state.dixis) {
+      this.add.image(d.rect.x + d.rect.w / 2, d.rect.y + d.rect.h, 'dixi').setOrigin(0.5, 1).setDepth(d.rect.y + d.rect.h);
+      this.dixiSigns.set(d.id, this.add.text(d.rect.x + d.rect.w / 2, d.rect.y - 26, 'Frei', textStyle(15, '#8cff7a'))
+        .setOrigin(0.5).setDepth(d.rect.y + d.rect.h + 1));
+    }
+    const dx = this.state.dixis;
+    if (dx.length) {
+      this.add.text((dx[0].rect.x + dx[dx.length - 1].rect.x + dx[0].rect.w) / 2, dx[0].rect.y - 52, 'DIXI', textStyle(26, '#8fd3ff'))
+        .setOrigin(0.5).setDepth(dx[0].rect.y);
+    }
+
+    // Riesenrad
+    const rr = RIESENRAD;
+    const baseY = rr.base.y + rr.base.h;
+    this.wheel = this.add.image(rr.wheel.x, rr.wheel.y, 'riesenrad_wheel').setDepth(baseY - 2)
+      .setDisplaySize(rr.wheel.r * 2 + 20, rr.wheel.r * 2 + 20);
+    this.add.image(rr.wheel.x, baseY, 'riesenrad_stand').setOrigin(0.5, 1).setDepth(baseY - 1)
+      .setDisplaySize(300, baseY - rr.wheel.y + 30);
+    for (let i = 0; i < 8; i++) this.gondolas.push(this.add.image(0, 0, 'gondola').setOrigin(0.5, 0).setDepth(baseY));
+    this.add.text(rr.wheel.x, rr.wheel.y - rr.wheel.r - 40, 'RIESENRAD', textStyle(28, '#ff8ad8')).setOrigin(0.5).setDepth(baseY);
+
+    // Hau-den-Lukas
+    const lk = LUKAS.rect;
+    const lukasBottom = lk.y + lk.h;
+    this.add.image(lk.x + lk.w / 2, lukasBottom, 'lukas').setOrigin(0.5, 1).setDepth(lukasBottom);
+    this.lukasPuck = this.add.image(lk.x + lk.w / 2, lukasBottom - 40, 'lukas_puck').setDepth(lukasBottom + 1);
+    this.add.text(lk.x + lk.w / 2, lukasBottom - 300, 'HAU DEN LUKAS', textStyle(22, COLORS.gold)).setOrigin(0.5).setDepth(lukasBottom);
+    for (const at of this.state.attractions) {
+      const y = at.kind === 'riesenrad' ? at.spot.y + 34 : at.spot.y + 30;
+      this.attractionSigns.set(at.id, this.add.text(at.spot.x, y, '', textStyle(15, '#cfd8e3')).setOrigin(0.5).setDepth(at.spot.y + 40));
+    }
+  }
+
+  /** Höhe (px über dem Boden) des Lukas-Pucks für eine Kraft 0–1 */
+  private lukasPuckY(power: number): number {
+    const bottom = LUKAS.rect.y + LUKAS.rect.h;
+    return bottom - 40 - power * 200;
+  }
+
+  /** Position einer Gondel (i von n) bei Radwinkel `a` */
+  private gondolaPos(i: number, n: number, a: number): { x: number; y: number } {
+    const ang = a + (i / n) * Math.PI * 2;
+    const r = RIESENRAD.wheel.r;
+    return { x: RIESENRAD.wheel.x + Math.cos(ang) * r, y: RIESENRAD.wheel.y + Math.sin(ang) * r };
   }
 
   private buildLights(): void {
@@ -241,6 +295,8 @@ export class GameScene extends Phaser.Scene {
     this.playerView.root.addAt(this.playerRing, 0);
     this.slowIcon = this.add.image(0, -78, 'food_hendl').setVisible(false);
     this.playerView.root.add(this.slowIcon);
+    this.heartIcon = this.add.image(-26, -60, 'heart').setScale(0.7).setVisible(false);
+    this.playerView.root.add(this.heartIcon);
 
     this.focusArrow = this.add.image(0, 0, 'arrow').setDepth(DEPTH.ui).setVisible(false);
     this.focusLabel = this.add.text(0, 0, '', textStyle(20)).setOrigin(0.5, 1).setDepth(DEPTH.ui).setVisible(false);
@@ -250,8 +306,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   private addNpcView(n: Npc): void {
-    const key: TextureKey = n.role === 'waitress' ? 'waitress' : `visitor_${n.variant}`;
+    const key: TextureKey = n.role === 'waitress' ? 'waitress' : n.role === 'security' ? 'security' : `visitor_${n.variant}`;
     const v = this.makeFigure(key, n.pos.x, n.pos.y);
+    if (n.followId !== null) v.root.setScale(0.68); // Kind
     if (n.role === 'waitress') {
       v.carry = this.add.image(16, -48, 'drink_mass').setScale(0.9);
       v.root.add(v.carry);
@@ -366,7 +423,39 @@ export class GameScene extends Phaser.Scene {
         pv.body.setTint(Phaser.Display.Color.GetColor(c.r, c.g, c.b));
       } else pv.body.clearTint();
       this.slowIcon.setVisible(p.slowTimer > 0).setAngle(Math.sin(t * 10) * 15);
+      this.heartIcon.setVisible(p.lebkuchenherz).setScale(0.7 + Math.sin(t * 5) * 0.05);
       this.playerRing.setAlpha(0.6 + Math.sin(t * 4) * 0.3);
+    }
+
+    // --- Riesenrad, Lukas, Dixi ---
+    this.wheelAngle += dt * 0.25;
+    this.wheel.rotation = this.wheelAngle;
+    this.gondolas.forEach((gd, i) => {
+      const gp = this.gondolaPos(i, this.gondolas.length, this.wheelAngle);
+      gd.setPosition(gp.x, gp.y);
+    });
+    const act = p.activity;
+    if (act?.kind === 'riesenrad') {
+      // Spieler fährt einmal rundherum: Start unten beim Einstieg
+      const progress = Math.min(1, act.elapsed / act.total);
+      const gp = this.gondolaPos(0, 1, Math.PI / 2 + progress * Math.PI * 2);
+      pv.root.setPosition(gp.x, gp.y + 28).setDepth(RIESENRAD.base.y + RIESENRAD.base.h + 2);
+      pv.body.rotation = 0;
+    }
+    pv.root.setAlpha(act?.kind === 'dixi' && act.elapsed >= act.queue ? 0 : 1);
+    if (act?.kind === 'lukas') {
+      this.lukasPuckTween?.stop();
+      this.lukasPuckTween = null;
+      this.lukasPuck.y = this.lukasPuckY(s.lukasPower);
+    }
+    for (const d of s.dixis) {
+      const sign = this.dixiSigns.get(d.id);
+      const inside = act?.kind === 'dixi' && act.targetId === d.id;
+      sign?.setText(inside ? 'Besetzt' : d.cooldown > 0 ? 'Putzen…' : 'Frei').setColor(inside ? '#ff8a8a' : d.cooldown > 0 ? '#ffd23f' : '#8cff7a');
+    }
+    for (const at of s.attractions) {
+      const sign = this.attractionSigns.get(at.id);
+      sign?.setText(at.cooldown > 0 ? `in ${Math.ceil(at.cooldown)} s` : '');
     }
 
     // --- NPCs ---
@@ -374,9 +463,16 @@ export class GameScene extends Phaser.Scene {
       const v = this.npcViews.get(n.id);
       if (!v) continue;
       v.root.setPosition(n.pos.x, n.pos.y).setDepth(n.pos.y);
+      if (n.state === 'down') {
+        // Bierleiche: liegt flach
+        v.body.rotation = Math.PI / 2 * (v.phase > 5 ? 1 : -1);
+        v.body.y = 14;
+        continue;
+      }
       v.body.y = n.moving ? -Math.abs(Math.sin(t * 10 + v.phase)) * 4 : 0;
       if (n.moving && Math.abs(Math.cos(n.facing)) > 0.2) v.body.setFlipX(Math.cos(n.facing) < 0);
-      v.body.rotation = n.moving ? Math.sin(t * 10 + v.phase) * 0.06 : 0;
+      const sway = n.drunk ? Math.sin(t * 3 + v.phase) * 0.22 : 0;
+      v.body.rotation = (n.moving ? Math.sin(t * 10 + v.phase) * 0.06 : 0) + sway;
       if (v.carry) {
         v.carry.setVisible(!!n.carrying);
         if (n.carrying) v.carry.setTexture(`drink_${n.carrying}` as TextureKey);
@@ -622,6 +718,50 @@ export class GameScene extends Phaser.Scene {
         if (e.onBeat) this.floatText(pp.x, pp.y - 130, e.combo > 1 ? `Im Takt! Combo ×${e.combo}` : 'Im Takt!', '#7ed957', 30);
         break;
       case 'burpChargeStart':
+        break;
+      case 'activity':
+        if (e.stage === 'start') audio.play(e.kind === 'riesenrad' ? 'whoosh' : 'click');
+        if (e.stage === 'inside') audio.play('click', { rate: 0.7 });
+        if (e.stage === 'end' && e.kind === 'dixi') {
+          audio.play('whoosh', { rate: 1.4 });
+          this.floatText(pp.x, pp.y - 100, `Erleichtert! Kotz ${ATTRACTIONS.dixi.kotz}`, '#8fd3ff', 26);
+        }
+        break;
+      case 'lukasStrike': {
+        const bell = e.prize === 'heart' || e.power >= ATTRACTIONS.lukas.bellAt;
+        audio.play(bell ? 'win' : 'bump', { rate: bell ? 1.2 : 1 });
+        this.cameras.main.shake(200, 0.006);
+        this.lukasPuckTween?.stop();
+        this.lukasPuck.y = this.lukasPuckY(0);
+        this.lukasPuckTween = this.tweens.add({
+          targets: this.lukasPuck, y: this.lukasPuckY(Math.max(0.05, e.power)), duration: 260, ease: 'Quad.out', yoyo: true, hold: 300,
+        });
+        const label = e.prize === 'heart' ? 'DING! Lebkuchenherz!' : e.prize === 'mass' ? (bell ? 'DING! Freimaß!' : 'Freimaß!') : 'Schwach…';
+        this.floatText(e.pos.x, e.pos.y - 120, `${Math.round(e.power * 100)} % – ${label}`, bell ? COLORS.gold : '#ffffff', 28);
+        if (bell) this.confettiFx.explode(50, LUKAS.rect.x + LUKAS.rect.w / 2, LUKAS.rect.y - 180);
+        break;
+      }
+      case 'rempler':
+        audio.play('bump');
+        this.cameras.main.shake(160, 0.006);
+        this.foamFx.explode(16, e.pos.x, e.pos.y - 40);
+        this.floatText(e.pos.x, e.pos.y - 110, 'Bier verschüttet!', '#ff8ad8', 26);
+        break;
+      case 'securityPush':
+        audio.play('bump', { rate: 0.8 });
+        this.cameras.main.shake(220, 0.008);
+        this.floatText(e.pos.x, e.pos.y - 110, 'Rausgeschmissen!', '#ff8a8a', 28);
+        break;
+      case 'heartSaved':
+        audio.play('win');
+        this.confettiFx.explode(60, e.pos.x, e.pos.y - 40);
+        break;
+      case 'npcGone': {
+        const v = this.npcViews.get(e.npcId);
+        if (v) { v.root.destroy(); this.npcViews.delete(e.npcId); }
+        break;
+      }
+      case 'npcDown':
         break;
       case 'carouselEnter':
         audio.play('whoosh');

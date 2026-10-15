@@ -146,7 +146,7 @@ export const PHASES: EveningPhaseConfig[] = [
   },
   {
     id: 'lastOrder', name: 'Last Order', fromHour: 22, banner: '22:00 – LAST ORDER!', subline: 'Getränke +50 % Promille – aber Obacht!',
-    prostIntervalFactor: 0.8, fieldSpawnIntervalFactor: 0.8, drinkPromilleFactor: 1.5, drinkKotzFactor: 1.35,
+    prostIntervalFactor: 0.8, fieldSpawnIntervalFactor: 0.8, drinkPromilleFactor: 1.5, drinkKotzFactor: 1.25,
     liverFactor: 1, musicVolume: 0.5,
   },
 ];
@@ -347,6 +347,75 @@ export const EVENTS = {
 };
 
 // ---------------------------------------------------------------------------
+// Welt: Gegenmittel und Chancen
+// ---------------------------------------------------------------------------
+
+export const ATTRACTIONS = {
+  dixi: {
+    /** Wartezeit (s) in der Schlange; wächst mit der Uhrzeit um `queuePerHour` je Stunde nach 18 Uhr … */
+    queueMin: 0.5,
+    queueMax: 2,
+    queuePerHour: 0.5,
+    /** … und um so viel (s) mit jedem eigenen Besuch (die Leute merken sich das) */
+    queuePerVisit: 2,
+    /** Zeit in der Kabine (s) */
+    insideSeconds: 2.5,
+    kotz: -15,
+    sprudel: -40,
+    misch: -10,
+    /** Danach ist die Kabine so lange "wird geputzt" (s) */
+    cooldownSeconds: 30,
+  },
+  riesenrad: {
+    rideSeconds: 10,
+    /** Pro Sekunde während der Fahrt (zusätzlich zu den normalen Raten) */
+    kotzPerSecond: -3.5,
+    sprudelPerSecond: -2,
+    /** Bis die nächste Gondel frei ist (s) */
+    cooldownSeconds: 25,
+  },
+  lukas: {
+    /** So lange (s) läuft die Nadel; wer nicht drückt, schlägt am Ende ins Leere */
+    maxSeconds: 4,
+    /** Dauer (s) eines Nadel-Durchlaufs hoch und runter (nüchtern) … */
+    basePeriod: 1.3,
+    /** … je 1 ‰ wird sie um diesen Anteil schneller */
+    speedPerPromille: 0.3,
+    /** Ab dieser Kraft (0–1) läutet die Glocke: Lebkuchenherz */
+    bellAt: 0.92,
+    /** Ab dieser Kraft gibt es eine Freimaß */
+    prizeAt: 0.7,
+    /** Anstrengung: so viel Kotz kostet jeder Schlag */
+    effortKotz: 3,
+    cooldownSeconds: 15,
+  },
+};
+
+export const NPC_BEHAVIOR = {
+  /** Bierleichen: Besucher schlafen ab der Stimmungs-Phase ein und liegen im Weg */
+  bierleiche: { chancePerSecond: 0.004, minSeconds: 14, maxSeconds: 24, radius: 22, maxDown: 3 },
+  /** Rempler: torkelnde Besucher (Anteil je Phase), die einem das Bier verschütten */
+  rempler: {
+    share: { gemuetlich: 0, stimmung: 0.25, lastOrder: 0.45 } as Record<EveningPhaseId, number>,
+    promilleLoss: 0.05,
+    sprudel: 5,
+    kotz: 2,
+    knockback: 55,
+    /** Pause (s), bevor derselbe Rempler wieder zuschlagen kann */
+    cooldownSeconds: 12,
+    /** So lange (s) ist man nach einem Rempler vor dem nächsten sicher */
+    playerGraceSeconds: 6,
+    /** Chance pro Sekunde, dass ein Rempler in der Nähe auf einen zusteuert */
+    seekChancePerSecond: 0.12,
+    seekRadius: 320,
+  },
+  /** Security im Biergarten: ab diesem Pegel wird man rausgeschoben */
+  security: { count: 1, promille: 2.2, radius: 70, push: 150, chaseSpeed: 95, patrolSpeed: 55, cooldownSeconds: 1.5 },
+  /** Familien (Eltern mit Kind) – nur in der gemütlichen Phase, dann gehen sie heim */
+  family: { count: 4, leaveSpeed: 80 },
+};
+
+// ---------------------------------------------------------------------------
 // Kotzen als Ereignis
 // ---------------------------------------------------------------------------
 
@@ -407,6 +476,18 @@ export const LINES = {
   recover: ['Jetzt geht\'s wieder.', 'Des hat guad do…', 'Oans geht no!'],
   burp: ['*BÖÖRP*', '*Rülps*', 'Tschuldigung!'],
   burpFail: ['Uuups…', 'Des war knapp…'],
+  family: ['Mama, i mog a Zuckerwatte!', 'Papa, Karussell!', 'Glei geh ma hoam.', 'Ned so schnell!'],
+  familyLeave: ['Pfiat eich, mia gengan hoam!', 'Ab ins Bett, Kinder!'],
+  security: ['Du hosd gnua, Freind!', 'Do kummst ned eini!', 'Geh weida, Spezl!'],
+  rempler: ['Hoppala!', '\'Tschuldigung… hicks!', 'Obacht, Bua!'],
+  remplerPlayer: ['Mei Bier!', 'He! Mei Maß!', 'Pass doch auf!'],
+  bierleiche: ['Zzz…', 'Nur kurz hinlegen…', 'Mama…'],
+  dixi: ['Endlich…', 'Puh, des hat pressiert!', 'Wia neu geboren!'],
+  riesenrad: ['Schee is die Aussicht!', 'Durchschnaufen…', 'Von do obn is alles so kloa.'],
+  lukasBell: ['DING! Wia a Stier!', 'Hau ruck!'],
+  lukasMid: ['Ned schlecht!', 'Fast!'],
+  lukasWeak: ['Mei Arm…', 'Des war nix.'],
+  heart: ['Mei Lebkuchenherz hod mi grett!', 'Schutzengel aus Lebkuchen!'],
   npc: [
     'Oans, zwoa, g\'suffa!', 'Ein Prosit der Gemütlichkeit!', 'Zwoa Maß, bittschön!',
     'Servus!', 'Mia san mia!', 'Wo is des Klo?', 'Hendl, frisch vom Grill!', 'Brezn, Brezn!',

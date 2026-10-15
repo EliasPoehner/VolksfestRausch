@@ -23,7 +23,8 @@ export type TextureKey =
   | 'tent' | 'booth_brezn' | 'booth_hendl' | 'booth_steckerlfisch' | 'bench'
   | 'carousel' | 'carousel_crown' | `bumper_${number}` | 'tree' | 'pole'
   | 'bulb' | 'px' | 'confetti' | 'drop' | 'puddle' | 'arrow' | 'sanka' | 'stretcher'
-  | 'bubble_foam' | 'rauten';
+  | 'bubble_foam' | 'rauten'
+  | 'security' | 'dixi' | 'riesenrad_stand' | 'riesenrad_wheel' | 'gondola' | 'lukas' | 'lukas_puck' | 'heart';
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -478,6 +479,95 @@ function drawTextures(scene: Phaser.Scene): void {
   make(scene, 'stretcher', 76, 28, (ctx) => {
     rrect(ctx, 2, 4, 72, 20, 4); fillStroke(ctx, '#e8e8e8', 3);
     ctx.fillStyle = '#e53935'; ctx.fillRect(6, 12, 64, 4);
+  });
+
+  // ---- Security (44×62): schwarzes Shirt mit gelbem Streifen ----
+  make(scene, 'security', 44, 62, (ctx) => {
+    ctx.translate(0, 3);
+    drawPerson(ctx, { female: false, skin: SKINS[2], shirt: '#1d1d1d', pants: '#2c2c2c', hair: HAIRS[2], hat: null });
+    ctx.fillStyle = '#ffd23f'; ctx.fillRect(13, 32, 18, 4);
+  });
+
+  // ---- Dixi-Klo (54×96, Tür vorne) ----
+  make(scene, 'dixi', 54, 96, (ctx) => {
+    rrect(ctx, 3, 10, 48, 84, 6); fillStroke(ctx, '#2f7fd6', 3);
+    // Dach
+    ctx.beginPath(); ctx.moveTo(1, 14); ctx.quadraticCurveTo(27, -2, 53, 14); ctx.closePath(); fillStroke(ctx, '#e9eef5', 3);
+    // Tür
+    rrect(ctx, 9, 24, 36, 66, 4); fillStroke(ctx, '#3b8ee6', 2.5);
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    for (let i = 0; i < 4; i++) ctx.fillRect(14, 30 + i * 5, 26, 2);
+    // Griff
+    rrect(ctx, 37, 54, 5, 12, 2); fillStroke(ctx, '#d0d0d0', 1.5);
+    // WC-Schild
+    rrect(ctx, 16, 52, 18, 12, 3); fillStroke(ctx, '#ffffff', 1.5);
+    ctx.fillStyle = '#2f7fd6'; ctx.font = 'bold 9px sans-serif'; ctx.fillText('WC', 18, 61);
+  });
+
+  // ---- Riesenrad: Gestell (300×250), Rad (280×280), Gondel (34×34) ----
+  make(scene, 'riesenrad_stand', 300, 250, (ctx) => {
+    ctx.lineCap = 'round';
+    for (const [x0, x1] of [[40, 150], [260, 150]] as const) {
+      ctx.beginPath(); ctx.moveTo(x0, 240); ctx.lineTo(x1, 20);
+      ctx.lineWidth = 16; ctx.strokeStyle = OUTLINE; ctx.stroke();
+      ctx.lineWidth = 10; ctx.strokeStyle = '#d9473b'; ctx.stroke();
+    }
+    rrect(ctx, 20, 226, 260, 20, 6); fillStroke(ctx, '#8b5a2b', 3);
+    ctx.beginPath(); ctx.arc(150, 20, 12, 0, Math.PI * 2); fillStroke(ctx, '#ffd23f', 3);
+  });
+  make(scene, 'riesenrad_wheel', 280, 280, (ctx) => {
+    const c = 140, R = 128;
+    ctx.lineWidth = 3; ctx.strokeStyle = '#f0f0f0';
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      ctx.beginPath(); ctx.moveTo(c, c); ctx.lineTo(c + Math.cos(a) * R, c + Math.sin(a) * R); ctx.stroke();
+    }
+    for (const [r, w, col] of [[R, 9, '#f0f0f0'], [R - 26, 5, '#ffd23f']] as const) {
+      ctx.beginPath(); ctx.arc(c, c, r, 0, Math.PI * 2);
+      ctx.lineWidth = w + 4; ctx.strokeStyle = OUTLINE; ctx.stroke();
+      ctx.lineWidth = w; ctx.strokeStyle = col; ctx.stroke();
+    }
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      ctx.beginPath(); ctx.arc(c + Math.cos(a) * R, c + Math.sin(a) * R, 5, 0, Math.PI * 2);
+      fillStroke(ctx, i % 2 ? '#ff6fa8' : '#8fd3ff', 2);
+    }
+  });
+  make(scene, 'gondola', 34, 34, (ctx) => {
+    ctx.strokeStyle = OUTLINE; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(17, 0); ctx.lineTo(17, 8); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(4, 12); ctx.quadraticCurveTo(17, 4, 30, 12); ctx.closePath(); fillStroke(ctx, '#d9473b', 2.5);
+    rrect(ctx, 5, 12, 24, 18, 5); fillStroke(ctx, '#ffd23f', 2.5);
+    ctx.fillStyle = '#9fd3ff'; ctx.fillRect(9, 15, 16, 6);
+  });
+
+  // ---- Hau-den-Lukas (70×270): Sockel, Skala, Glocke; Puck (22×12) ----
+  make(scene, 'lukas', 70, 270, (ctx) => {
+    // Skala-Mast mit Farbverlauf (unten grün, oben rot)
+    const grad = ctx.createLinearGradient(0, 230, 0, 30);
+    grad.addColorStop(0, '#3fa34d'); grad.addColorStop(0.6, '#ffd23f'); grad.addColorStop(1, '#e94b3c');
+    rrect(ctx, 27, 26, 16, 210, 5); fillStroke(ctx, '#000000', 3);
+    ctx.fillStyle = grad; rrect(ctx, 30, 30, 10, 202, 3); ctx.fill();
+    ctx.strokeStyle = OUTLINE; ctx.lineWidth = 2;
+    for (let i = 1; i < 10; i++) { const y = 232 - i * 20; ctx.beginPath(); ctx.moveTo(22, y); ctx.lineTo(27, y); ctx.stroke(); }
+    // Glocke
+    ctx.beginPath(); ctx.moveTo(22, 26); ctx.quadraticCurveTo(22, 6, 35, 6); ctx.quadraticCurveTo(48, 6, 48, 26); ctx.closePath();
+    fillStroke(ctx, '#ffd23f', 3);
+    // Sockel mit Schlagplatte
+    rrect(ctx, 6, 232, 58, 34, 6); fillStroke(ctx, '#8b5a2b', 3);
+    rrect(ctx, 18, 226, 34, 10, 3); fillStroke(ctx, '#bdbdbd', 2.5);
+  });
+  make(scene, 'lukas_puck', 22, 12, (ctx) => { rrect(ctx, 1, 1, 20, 10, 4); fillStroke(ctx, '#ffffff', 2.5); });
+
+  // ---- Lebkuchenherz (36×32) ----
+  make(scene, 'heart', 36, 32, (ctx) => {
+    ctx.beginPath();
+    ctx.moveTo(18, 30); ctx.bezierCurveTo(2, 18, 0, 6, 9, 3); ctx.bezierCurveTo(14, 1, 18, 5, 18, 8);
+    ctx.bezierCurveTo(18, 5, 22, 1, 27, 3); ctx.bezierCurveTo(36, 6, 34, 18, 18, 30); ctx.closePath();
+    fillStroke(ctx, '#a0522d', 3);
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(8, 10); ctx.quadraticCurveTo(18, 22, 28, 10); ctx.stroke();
+    ctx.fillStyle = '#ff6fa8'; ellipse(ctx, 18, 15, 3, 3); ctx.fill();
   });
 }
 

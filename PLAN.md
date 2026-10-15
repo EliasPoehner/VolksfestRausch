@@ -81,11 +81,31 @@ Hinweis: Die Musik selbst läuft nicht synchron zur Logik (sie startet mit der S
 | Klug + Endspurt | 2,74 | 2,94 | 5 % | 45 % |
 | Klug ohne Gefühl | 1,78 | 1,85 | 0 % | 25 % |
 
-## Schritt 4 – E: Welt mit Gegenmitteln und Chancen
+## Schritt 4 – E: Welt mit Gegenmitteln und Chancen ✅
 
-- Dixi-Klo (senkt Kotz stark, kostet Zeit/Warteschlange), Hau-den-Lukas/Watschenbaum als Minispiel mit Item-Preis, Riesenrad als ruhige Kotz-Erholung.
-- NPC-Verhalten: Bierleichen blockieren Wege, Rempler verschütten Getränke, Security ab hoher Promille nahe am Zelt.
-- Neue Buden/Objekte in `src/config/world.ts`, Logik in `GameState`, Texturen in `src/render/textures.ts`.
+- [x] **Dixi-Klo** (3 Kabinen, `DIXIS` in world.ts): Schlange (wächst mit der Uhrzeit und jedem eigenen Besuch), dann 2,5 s drin. Kotz −15, Sprudel −40, Mischmasch −10, danach 30 s „Putzen…“.
+- [x] **Riesenrad**: 10 s Fahrt, Kotz −3,5/s und Sprudel −2/s, der Spieler fährt sichtbar in der Gondel mit. 25 s bis zur nächsten freien Gondel.
+- [x] **Hau-den-Lukas** als Timing-Minispiel: Die Nadel läuft als Dreieck 0 → 1 → 0 und wird je ‰ 30 % schneller. Ab 0,7 gibt es eine Freimaß als Pickup, ab 0,92 ein **Lebkuchenherz**, das einmal vor dem Sanka rettet. Jeder Schlag kostet 3 Kotz.
+- [x] NPC-Verhalten:
+  - Bierleichen liegen ab 20 Uhr als Hindernis im Weg, höchstens 3 gleichzeitig.
+  - Rempler (25 % bzw. 45 % der Besucher je Phase): −0,05 ‰, +5 Sprudel, +2 Kotz, Schubs. Danach hat man 6 s Ruhe.
+  - Security im Biergarten: ab 2,2 ‰ wird man rausgeschoben.
+  - Familien mit Kind (aus Schritt 2) gehen um 20 Uhr heim.
+- [x] Logik als `Player.activity` (Spieler steht still, Lukas reagiert auf E) plus `GameState.dixis`/`attractions`. Neue Events: `activity`, `lukasStrike`, `rempler`, `securityPush`, `npcDown`, `npcGone`, `heartSaved`. Texturen für Dixi, Riesenrad, Lukas, Security und Lebkuchenherz.
+- [x] Tests für Dixi, Schlange, Riesenrad, Lukas-Nadel und Preise, Lebkuchenherz, Familien, Security, Rempler und Bierleichen. Die Bots nutzen jetzt Dixi und Lukas, und der kluge Bot meidet bei hohem Pegel den Biergarten.
+
+**Balancing-Notizen:** Mit −30 Kotz und kurzer Schlange war das Dixi viel zu stark (kluger Bot 4,7 Score, nie gekotzt). Jetzt bringt es dem klugen Bot etwa +0,4 Score. Rempler wurden entschärft (vorher 7 pro Runde, jetzt 1–2). Die Last Order hat jetzt Kotz ×1,25 statt ×1,35.
+
+| Strategie (20 Seeds) | Ø Score | Ø ‰ | Sanka | mind. 1× gekotzt |
+|---|---|---|---|---|
+| Maß-Spam | 1,14 | 3,01 | 100 % | 100 % |
+| Gierig | 0,92 | 2,42 | 100 % | 100 % |
+| Wahllos | 0,94 | 2,48 | 100 % | 100 % |
+| Klug | 2,88 | 2,92 | 0 % | 10 % |
+| Klug + Endspurt | 3,07 | 3,15 | 0 % | 15 % |
+| Klug ohne Gefühl | 2,31 | 2,31 | 0 % | 0 % |
+
+Offen: Der kluge Bot kotzt mit dem Dixi wieder selten (Beobachtung 1). Das Riesenrad nutzt kein Bot, weil die Zeit zu teuer ist. Es lohnt sich vor allem für Menschen, die gerade nichts in der Nähe haben.
 
 ## Schritt 5 – F: Meta und Wiederspielwert
 

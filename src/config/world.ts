@@ -80,5 +80,30 @@ export const LIGHT_STRINGS: { from: { x: number; y: number }; to: { x: number; y
   { from: { x: 1360, y: 920 }, to: { x: 1760, y: 920 } },
 ];
 
+/** Riesenrad: Sockel ist fest, eingestiegen wird unten am Steg */
+export const RIESENRAD = {
+  base: { x: 60, y: 1560, w: 200, h: 60 } as RectDef,
+  /** Mittelpunkt und Radius des Rads (nur Darstellung) */
+  wheel: { x: 160, y: 1400, r: 130 } as CircleDef,
+  boarding: { x: 160, y: 1660 },
+};
+
+/** Dixi-Klos: eine Reihe Kabinen, Tür jeweils unten */
+export const DIXIS: RectDef[] = [
+  { x: 2380, y: 760, w: 50, h: 80 },
+  { x: 2436, y: 760, w: 50, h: 80 },
+  { x: 2492, y: 760, w: 50, h: 80 },
+];
+export const DIXI_DOOR_OFFSET = 30;
+
+/** Hau-den-Lukas zwischen Zelt und Autoscooter */
+export const LUKAS = {
+  rect: { x: 1700, y: 420, w: 70, h: 70 } as RectDef,
+  counter: { x: 1735, y: 525 },
+};
+
+/** Biergarten vor dem Zelt – hier passt die Security auf */
+export const BIERGARTEN: RectDef = { x: 820, y: 540, w: 900, h: 400 };
+
 /** Startposition des Spielers */
 export const PLAYER_START = { x: 1300, y: 960 };

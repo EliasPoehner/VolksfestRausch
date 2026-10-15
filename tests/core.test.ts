@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { BURP, DRINKS, EVENTS, FOODS, METERS, PHASES, PLAYER, ROUND, SCORING, VOMIT } from '../src/config/balance';
-import { GameState, NO_COMMAND, eveningAt } from '../src/core/GameState';
+import { ATTRACTIONS, BURP, DRINKS, EVENTS, FOODS, METERS, NPC_BEHAVIOR, PHASES, PLAYER, ROUND, SCORING, VOMIT } from '../src/config/balance';
+import { BIERGARTEN } from '../src/config/world';
+import { GameState, NO_COMMAND, eveningAt, lukasPowerAt } from '../src/core/GameState';
 import { Meters } from '../src/core/Meters';
+import { dist } from '../src/core/math';
 import { clockLabel, computeScore, titleFor } from '../src/core/scoring';
 
 describe('Meters', () => {
@@ -398,6 +400,154 @@ describe('Abend-Phasen', () => {
     expect(decay(1, 1)).toBeCloseTo((METERS.promille.decayPerSecond + METERS.promille.decayPerPromillePerSecond) * 10, 2);
     expect(decay(3, 1)).toBeGreaterThan(decay(1, 1));
     expect(decay(2, 1.25)).toBeGreaterThan(decay(2, 1));
+  });
+});
+
+describe('Welt: Gegenmittel und Chancen', () => {
+  /** Spieler direkt vor eine Attraktion stellen und E drücken */
+  const use = (g: GameState, spot: { x: number; y: number }) => {
+    g.player.pos = { ...spot };
+    g.step(ROUND.fixedStep, NO_COMMAND);
+    g.step(ROUND.fixedStep, { ...NO_COMMAND, action: true });
+  };
+  const runFor = (g: GameState, seconds: number) => {
+    for (let i = 0; i < Math.round(seconds / ROUND.fixedStep); i++) g.step(ROUND.fixedStep, NO_COMMAND);
+  };
+
+  it('Dixi-Klo: erst Schlange, dann Erleichterung; man steht so lange still', () => {
+    const g = new GameState(21);
+    const d = g.dixis[0];
+    use(g, d.door);
+    expect(g.player.activity?.kind).toBe('dixi');
+    g.meters.kotz = 60; g.meters.sprudel = 70;
+    const pos = { ...g.player.pos };
+    for (let i = 0; i < 30; i++) g.step(ROUND.fixedStep, { ...NO_COMMAND, move: { x: 1, y: 0 } });
+    expect(g.player.pos).toEqual(pos);
+    runFor(g, g.player.activity!.total);
+    expect(g.player.activity).toBeNull();
+    expect(g.stats.dixiVisits).toBe(1);
+    expect(g.meters.kotz).toBeLessThan(60 + ATTRACTIONS.dixi.kotz + 5);
+    expect(g.meters.sprudel).toBeLessThan(70 + ATTRACTIONS.dixi.sprudel + 1);
+    expect(d.cooldown).toBeGreaterThan(0);
+  });
+
+  it('Die Dixi-Schlange wird mit jedem Besuch länger', () => {
+    const g = new GameState(21);
+    use(g, g.dixis[0].door);
+    const first = g.player.activity!.queue;
+    runFor(g, g.player.activity!.total + 0.1);
+    use(g, g.dixis[1].door);
+    expect(g.player.activity!.queue).toBeGreaterThan(first + ATTRACTIONS.dixi.queuePerVisit - (ATTRACTIONS.dixi.queueMax - ATTRACTIONS.dixi.queueMin));
+  });
+
+  it('Riesenrad: Kotz sinkt während der Fahrt', () => {
+    const g = new GameState(21);
+    const rad = g.attractions.find((a) => a.kind === 'riesenrad')!;
+    use(g, rad.spot);
+    expect(g.player.activity?.kind).toBe('riesenrad');
+    g.meters.kotz = 70;
+    runFor(g, ATTRACTIONS.riesenrad.rideSeconds + 0.1);
+    expect(g.player.activity).toBeNull();
+    expect(g.meters.kotz).toBeLessThan(70 + ATTRACTIONS.riesenrad.kotzPerSecond * ATTRACTIONS.riesenrad.rideSeconds * 0.7);
+    expect(g.stats.riesenradRides).toBe(1);
+  });
+
+  it('Hau-den-Lukas: Nadel läuft hoch und runter und wird betrunken schneller', () => {
+    const c = ATTRACTIONS.lukas;
+    expect(lukasPowerAt(0, 0)).toBe(0);
+    expect(lukasPowerAt(c.basePeriod / 2, 0)).toBeCloseTo(1);
+    expect(lukasPowerAt(c.basePeriod, 0)).toBeCloseTo(0);
+    const drunkPeriod = c.basePeriod / (1 + 2 * c.speedPerPromille);
+    expect(lukasPowerAt(drunkPeriod / 2, 2)).toBeCloseTo(1);
+  });
+
+  it('Hau-den-Lukas: Glocke gibt ein Lebkuchenherz, mittlerer Schlag eine Freimaß', () => {
+    const g = new GameState(21);
+    const lukas = g.attractions.find((a) => a.kind === 'lukas')!;
+    use(g, lukas.spot);
+    while (g.lukasPower < ATTRACTIONS.lukas.bellAt) g.step(ROUND.fixedStep, NO_COMMAND);
+    g.step(ROUND.fixedStep, { ...NO_COMMAND, action: true });
+    expect(g.player.lebkuchenherz).toBe(true);
+    expect(g.stats.lukasBells).toBe(1);
+    lukas.cooldown = 0;
+    const before = g.pickups.length;
+    use(g, lukas.spot);
+    while (g.lukasPower < ATTRACTIONS.lukas.prizeAt) g.step(ROUND.fixedStep, NO_COMMAND);
+    g.step(ROUND.fixedStep, { ...NO_COMMAND, action: true });
+    // schon ein Herz → auch die Glocke gibt "nur" eine Freimaß
+    expect(g.pickups.length).toBeGreaterThan(before);
+  });
+
+  it('Das Lebkuchenherz rettet einmal vor dem Sanka', () => {
+    const g = new GameState(21);
+    g.player.lebkuchenherz = true;
+    g.stats.vomits = VOMIT.maxVomits - 1;
+    g.meters.kotz = 100;
+    g.step(ROUND.fixedStep, NO_COMMAND);
+    expect(g.phase).toBe('playing');
+    expect(g.player.lebkuchenherz).toBe(false);
+    expect(g.stats.heartSaves).toBe(1);
+    expect(g.stats.vomits).toBe(VOMIT.maxVomits - 1);
+    runFor(g, VOMIT.stunSeconds + 0.1);
+    g.meters.kotz = 100;
+    g.step(ROUND.fixedStep, NO_COMMAND);
+    expect(g.phase).toBe('ended');
+  });
+
+  it('Familien gehen ab 20 Uhr heim und verschwinden', () => {
+    const g = new GameState(21);
+    const families = () => g.npcs.filter((n) => n.family).length;
+    expect(families()).toBe(NPC_BEHAVIOR.family.count * 2);
+    g.elapsed = ROUND.durationSeconds * 0.4;
+    let gone = 0;
+    for (let i = 0; i < 60 * 70; i++) {
+      g.meters.kotz = 0; g.meters.sprudel = 0; g.meters.misch = 0;
+      g.step(ROUND.fixedStep, NO_COMMAND);
+      gone += g.events.drain().filter((e) => e.type === 'npcGone').length;
+      if (families() === 0) break;
+    }
+    expect(g.evening.id).not.toBe('gemuetlich');
+    expect(gone).toBeGreaterThan(NPC_BEHAVIOR.family.count);
+  });
+
+  it('Security schiebt Betrunkene aus dem Biergarten, Nüchterne nicht', () => {
+    const g = new GameState(21);
+    const sec = g.npcs.find((n) => n.role === 'security')!;
+    const spot = { x: BIERGARTEN.x + BIERGARTEN.w / 2, y: BIERGARTEN.y + 20 };
+    sec.pos = { x: spot.x + 30, y: spot.y };
+    g.player.pos = { ...spot };
+    g.meters.promille = 1;
+    g.step(ROUND.fixedStep, NO_COMMAND);
+    expect(g.stats.securityPushes).toBe(0);
+    g.meters.promille = NPC_BEHAVIOR.security.promille + 0.3;
+    sec.pos = { x: g.player.pos.x + 30, y: g.player.pos.y };
+    g.step(ROUND.fixedStep, NO_COMMAND);
+    expect(g.stats.securityPushes).toBe(1);
+  });
+
+  it('Rempler verschütten Bier, danach ist man kurz sicher', () => {
+    const g = new GameState(21);
+    const n = g.npcs.find((x) => x.role === 'visitor' && !x.family)!;
+    n.drunk = true;
+    g.meters.promille = 1;
+    n.pos = { x: g.player.pos.x + 20, y: g.player.pos.y };
+    g.step(ROUND.fixedStep, NO_COMMAND);
+    expect(g.stats.rempler).toBe(1);
+    expect(g.meters.promille).toBeLessThan(1);
+    const other = g.npcs.find((x) => x.role === 'visitor' && !x.family && x.id !== n.id)!;
+    other.drunk = true;
+    other.pos = { x: g.player.pos.x + 20, y: g.player.pos.y };
+    g.step(ROUND.fixedStep, NO_COMMAND);
+    expect(g.stats.rempler).toBe(1);
+  });
+
+  it('Bierleichen liegen im Weg', () => {
+    const g = new GameState(21);
+    const n = g.npcs.find((x) => x.role === 'visitor' && !x.family)!;
+    n.state = 'down'; n.timer = 30;
+    n.pos = { x: g.player.pos.x + 60, y: g.player.pos.y };
+    for (let i = 0; i < 60; i++) g.step(ROUND.fixedStep, { ...NO_COMMAND, move: { x: 1, y: 0 } });
+    expect(dist(g.player.pos, n.pos)).toBeGreaterThanOrEqual(PLAYER.radius + NPC_BEHAVIOR.bierleiche.radius - 0.5);
   });
 });
 

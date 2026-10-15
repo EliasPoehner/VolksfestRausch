@@ -6,13 +6,14 @@
  * Wird von `tests/balance.test.ts` genutzt, um zu prüfen, dass das Balancing
  * nicht unbemerkt kippt (z. B. "kluger Bot schlägt Spam-Bot").
  */
-import { BURP, DRINKS, ROUND, type DrinkId, type FoodId } from '../../src/config/balance';
+import { BURP, DRINKS, NPC_BEHAVIOR, ROUND, type DrinkId, type FoodId } from '../../src/config/balance';
+import { BIERGARTEN } from '../../src/config/world';
 import { GameState, type PlayerCommand } from '../../src/core/GameState';
 import type { GameResult } from '../../src/core/entities';
 import type { Meters } from '../../src/core/Meters';
-import { Rng, dist, normalize, type Vec2 } from '../../src/core/math';
+import { Rng, dist, normalize, pointInRect, type Vec2 } from '../../src/core/math';
 
-export type Item = { kind: 'drink'; id: DrinkId } | { kind: 'food'; id: FoodId };
+export type Item = { kind: 'drink'; id: DrinkId } | { kind: 'food'; id: FoodId } | { kind: 'place'; id: 'dixi' | 'riesenrad' | 'lukas' };
 
 export interface Strategy {
   name: string;
@@ -26,6 +27,10 @@ export interface Strategy {
   burpHold?(rng: Rng): number;
   /** Beim "Prost!" auf den Takt warten statt sofort zu drücken? */
   prostOnBeat?: boolean;
+  /** Hau-den-Lukas: ab welcher Nadel-Kraft (0–1) zugeschlagen wird. Standard 0,94 */
+  lukasAim?(rng: Rng): number;
+  /** Bei hohem Pegel den Biergarten meiden (wegen der Security)? */
+  avoidSecurity?: boolean;
 }
 
 const SWEET_MID = (BURP.sweetStart + BURP.sweetEnd) / 2;
@@ -44,6 +49,7 @@ export class Bot {
   private lastPos: Vec2 | null = null;
   private mash = 0;
   private burpTarget = SWEET_MID;
+  private lukasTarget = 0.94;
   private readonly blocked = new Map<string, number>();
 
   constructor(private readonly strategy: Strategy, seed: number) {
@@ -57,6 +63,17 @@ export class Bot {
     // Kontrollverlust: "Reiß di zam!" mit ca. 7,5 Tastendrücken pro Sekunde
     if (g.isVomiting) {
       cmd.action = this.mash++ % 8 === 0;
+      return cmd;
+    }
+
+    // Beschäftigt: beim Hau-den-Lukas im richtigen Moment zuschlagen, sonst warten
+    const act = g.player.activity;
+    if (act) {
+      if (act.kind === 'lukas') {
+        if (act.elapsed < ROUND.fixedStep * 1.5) this.lukasTarget = this.strategy.lukasAim?.(this.rng) ?? 0.94;
+        cmd.action = g.lukasPower >= this.lukasTarget;
+      }
+      this.target = null;
       return cmd;
     }
 
@@ -135,6 +152,7 @@ export class Bot {
       const n = g.findNpc(id);
       return n?.carrying ? { kind: 'drink', id: n.carrying } : null;
     }
+    if (type === 'dixi' || type === 'riesenrad' || type === 'lukas') return { kind: 'place', id: type };
     return null;
   }
 
@@ -143,8 +161,11 @@ export class Bot {
     const pp = g.player.pos;
     let best: Target | null = null;
     let bestD = Infinity;
+    const garden = { x: BIERGARTEN.x - 60, y: BIERGARTEN.y - 60, w: BIERGARTEN.w + 120, h: BIERGARTEN.h + 120 };
+    const avoidGarden = this.strategy.avoidSecurity && m.promille >= NPC_BEHAVIOR.security.promille - 0.15;
     const consider = (key: string, item: Item, pos: Vec2) => {
       if (this.blocked.has(key)) return;
+      if (avoidGarden && pointInRect(pos, garden)) return;
       const d = dist(pp, pos);
       if (d >= bestD) return;
       if (!this.strategy.wants(item, m, g, this.rng)) return;
@@ -156,6 +177,8 @@ export class Bot {
     }
     for (const b of g.booths) if (b.cooldown <= 0) consider(`b${b.id}`, { kind: 'food', id: b.kind }, b.counter);
     for (const n of g.npcs) if (n.role === 'waitress' && n.carrying) consider(`w${n.id}`, { kind: 'drink', id: n.carrying }, n.pos);
+    for (const d of g.dixis) if (d.cooldown <= 0) consider(`d${d.id}`, { kind: 'place', id: 'dixi' }, d.door);
+    for (const a of g.attractions) if (a.cooldown <= 0) consider(`a${a.id}`, { kind: 'place', id: a.kind }, a.spot);
     return best;
   }
 }
@@ -189,7 +212,7 @@ export const spamBot: Strategy = {
 /** Trinkt alles, was Promille bringt, rülpst bei Druck, isst nur im Notfall. */
 export const greedyBot: Strategy = {
   name: 'Gierig',
-  wants: (item, m) => (item.kind === 'drink' ? m.kotz < 80 : m.kotz > 75 && item.id !== 'wasser'),
+  wants: (item, m) => (item.kind === 'drink' ? m.kotz < 80 : item.kind === 'food' && m.kotz > 75 && item.id !== 'wasser'),
   joinProst: () => true,
   shouldBurp: (m) => m.sprudel > 55,
   // ungeduldig: hält mal zu kurz, mal zu lang
@@ -203,6 +226,7 @@ export const randomBot: Strategy = {
   joinProst: (_m, g) => g.elapsed % 2 < 1,
   shouldBurp: (_m, _g, rng) => rng.next() < 0.01,
   burpHold: (rng) => rng.next() * 1.6,
+  lukasAim: (rng) => 0.3 + rng.next() * 0.7,
 };
 
 /**
@@ -211,7 +235,13 @@ export const randomBot: Strategy = {
  */
 export const smartBot: Strategy = {
   name: 'Klug',
-  wants: (item, m) => {
+  wants: (item, m, g) => {
+    if (item.kind === 'place') {
+      // Klo, wenn's eng wird; Hau-den-Lukas für ein Lebkuchenherz, sobald einmal gekotzt
+      if (item.id === 'dixi') return m.kotz > 55 || m.sprudel > 70;
+      if (item.id === 'lukas') return !g.player.lebkuchenherz && g.stats.vomits >= 1 && m.kotz < 45;
+      return false;
+    }
     if (item.kind === 'food') {
       if (item.id === 'wasser') return m.sprudel > 55 || m.kotz > 60;
       if (item.id === 'steckerlfisch') return m.misch > 30 || m.magen < 40;
@@ -227,6 +257,7 @@ export const smartBot: Strategy = {
   joinProst: (m) => m.kotz < 65 && m.sprudel < 65,
   shouldBurp: (m) => m.sprudel > 35,
   prostOnBeat: true,
+  avoidSecurity: true,
 };
 
 /**
@@ -237,10 +268,12 @@ export const lastOrderBot: Strategy = {
   ...smartBot,
   name: 'Klug + Endspurt',
   wants: (item, m, g, rng) => {
-    if (g.evening.id !== 'lastOrder' || item.kind === 'food') return smartBot.wants(item, m, g, rng);
+    if (g.evening.id !== 'lastOrder' || item.kind !== 'drink') return smartBot.wants(item, m, g, rng);
     const d = DRINKS[item.id];
-    if (m.kotz + d.kotz * 2.7 > 72) return false;
-    if (m.sprudel + d.sprudel > 75) return false;
+    if (m.kotz + d.kotz * 2.7 > 78) return false;
+    if (m.sprudel + d.sprudel > 80) return false;
+    // Obstler: der verzögerte Kotz kommt kurz vor Schluss nicht mehr ganz an
+    if (item.id === 'obstler') return g.timeLeft < 20 && m.misch < 30;
     return item.id === 'mass' || item.id === 'weissbier';
   },
 };

@@ -15,15 +15,16 @@
  * Der Renderer darf den Zustand LESEN, aber nicht verändern.
  */
 import {
-  BURP, DRINKS, DRUNK, EVENTS, FOODS, HAZARDS, LINES, PHASES, PLAYER, ROUND, SPAWNS, VOMIT,
+  ATTRACTIONS, BURP, DRINKS, DRUNK, EVENTS, FOODS, HAZARDS, LINES, METERS, NPC_BEHAVIOR, PHASES, PLAYER, ROUND, SPAWNS, VOMIT,
   type DrinkId, type EveningPhaseConfig, type FoodId,
 } from '../config/balance';
 import {
-  BENCHES, BENCH_SLOTS, BOOTHS, BOOTH_COUNTER_OFFSET, BUMPER_ARENA, CAROUSEL, CAROUSEL_POLE_RADIUS,
-  PLAYER_START, TENT, TENT_DOOR, WORLD,
+  BENCHES, BENCH_SLOTS, BIERGARTEN, BOOTHS, BOOTH_COUNTER_OFFSET, BUMPER_ARENA, CAROUSEL, CAROUSEL_POLE_RADIUS,
+  DIXIS, DIXI_DOOR_OFFSET, LUKAS, PLAYER_START, RIESENRAD, TENT, TENT_DOOR, WORLD,
 } from '../config/world';
 import {
-  PLAYER_ID, type BenchSlot, type Booth, type BumperCar, type GameResult, type GameStats,
+  PLAYER_ID, type ActivityKind, type Attraction, type BenchSlot, type Booth, type BumperCar, type Dixi,
+  type GameResult, type GameStats,
   type InteractionFocus, type Npc, type Pickup, type Player, type ProstState,
 } from './entities';
 import { EventQueue, type VomitCause } from './events';
@@ -42,6 +43,14 @@ export interface PlayerCommand {
   action: boolean;
   /** R / Touch-Button ist in diesem Schritt gedrückt (gehalten). Loslassen löst den Rülpser aus. */
   burpHeld: boolean;
+}
+
+/** Kraft (0–1) der Hau-den-Lukas-Nadel nach `elapsed` Sekunden: Dreieck 0 → 1 → 0, betrunken schneller */
+export function lukasPowerAt(elapsed: number, promille: number): number {
+  const c = ATTRACTIONS.lukas;
+  const period = c.basePeriod / (1 + promille * c.speedPerPromille);
+  const ph = (elapsed % period) / period;
+  return ph < 0.5 ? ph * 2 : 2 - ph * 2;
 }
 
 /** Die Abend-Phase, die zu einer In-Game-Stunde gilt. */
@@ -75,6 +84,9 @@ export class GameState {
   readonly booths: Booth[] = [];
   readonly benchSlots: BenchSlot[] = [];
   readonly bumperCars: BumperCar[] = [];
+  readonly dixis: Dixi[] = [];
+  /** Riesenrad und Hau-den-Lukas */
+  readonly attractions: Attraction[] = [];
   /** Feste Hindernisse (Zelt, Buden, Bänke) */
   readonly solids: Rect[] = [];
 
@@ -87,7 +99,8 @@ export class GameState {
 
   readonly stats: GameStats = {
     drinks: 0, foods: 0, burps: 0, failedBurps: 0, perfectBurps: 0, prosts: 0, prostsOnBeat: 0, maxProstCombo: 0,
-    maxPromille: 0, vomits: 0,
+    maxPromille: 0, vomits: 0, dixiVisits: 0, riesenradRides: 0, bestLukas: 0, lukasBells: 0, rempler: 0,
+    securityPushes: 0, heartSaves: 0,
   };
   /** Aktuelle Prost-Combo: "Prost!" im Takt in Folge */
   prostCombo = 0;
@@ -101,13 +114,15 @@ export class GameState {
   private playerLineTimer = 8;
   private wasWarning = false;
   private burpWasHeld = false;
+  /** Schutzzeit nach einem Rempler (s) */
+  private remplerGrace = 0;
 
   constructor(seed = Date.now()) {
     this.rng = new Rng(seed);
     this.player = {
       id: PLAYER_ID, pos: { ...PLAYER_START }, vel: { x: 0, y: 0 }, facing: -Math.PI / 2,
       slowTimer: 0, invertTimer: 0, onCarousel: false, spin: 0, burpCooldown: 0, burpCharging: false, burpCharge: 0,
-      boostTimer: 0, prostBoostTimer: 0, vomitTimer: 0, vomitElapsed: 0,
+      boostTimer: 0, prostBoostTimer: 0, vomitTimer: 0, vomitElapsed: 0, activity: null, lebkuchenherz: false,
     };
     this.nextProstIn = this.rng.range(EVENTS.prost.minInterval * 0.5, EVENTS.prost.maxInterval * 0.6);
     this.applyEvening(PHASES[0]);
@@ -119,7 +134,14 @@ export class GameState {
   // -------------------------------------------------------------------------
 
   private buildWorld(): void {
-    this.solids.push(TENT);
+    this.solids.push(TENT, RIESENRAD.base, LUKAS.rect, ...DIXIS);
+    for (const r of DIXIS) {
+      this.dixis.push({ id: this.nextId++, rect: r, door: { x: r.x + r.w / 2, y: r.y + r.h + DIXI_DOOR_OFFSET }, cooldown: 0 });
+    }
+    this.attractions.push(
+      { id: this.nextId++, kind: 'riesenrad', spot: { ...RIESENRAD.boarding }, cooldown: 0 },
+      { id: this.nextId++, kind: 'lukas', spot: { ...LUKAS.counter }, cooldown: 0 },
+    );
 
     for (const b of BOOTHS) {
       this.solids.push(b.rect);
@@ -154,6 +176,24 @@ export class GameState {
       this.npcs.push(w);
     }
 
+    // Familien: ein Elternteil mit Kind, gehen um 20 Uhr heim
+    for (let i = 0; i < NPC_BEHAVIOR.family.count; i++) {
+      const parent = this.makeNpc('visitor', this.randomWalkablePoint());
+      parent.family = true;
+      const kid = this.makeNpc('visitor', { x: parent.pos.x + 24, y: parent.pos.y + 10 });
+      kid.family = true;
+      kid.followId = parent.id;
+      kid.speed = parent.speed * 1.25;
+      this.npcs.push(parent, kid);
+    }
+    for (let i = 0; i < NPC_BEHAVIOR.security.count; i++) {
+      const sec = this.makeNpc('security', this.randomPointIn(BIERGARTEN));
+      sec.state = 'patrol';
+      sec.speed = NPC_BEHAVIOR.security.patrolSpeed;
+      sec.target = this.randomPointIn(BIERGARTEN);
+      this.npcs.push(sec);
+    }
+
     for (let i = 0; i < HAZARDS.bumperCar.count; i++) {
       const a = this.rng.range(0, Math.PI * 2);
       this.bumperCars.push({
@@ -177,7 +217,7 @@ export class GameState {
       speed: SPAWNS.visitorSpeed * this.rng.range(0.7, 1.3),
       variant: this.rng.int(0, 8), facing: 0, moving: false,
       timer: this.rng.range(0, 3), chatterTimer: this.rng.range(EVENTS.npcChatterMin, EVENTS.npcChatterMax * 3),
-      stuckTimer: 0, carrying: null, state: 'idle',
+      stuckTimer: 0, carrying: null, state: 'idle', drunk: false, family: false, followId: null, bumpCooldown: 0,
     };
   }
 
@@ -191,6 +231,15 @@ export class GameState {
       if (this.isFreeSpot(p, margin)) return p;
     }
     return { ...PLAYER_START };
+  }
+
+  /** Zufälliger freier Punkt innerhalb eines Bereichs */
+  randomPointIn(r: Rect, margin = 20): Vec2 {
+    for (let tries = 0; tries < 40; tries++) {
+      const p = { x: this.rng.range(r.x, r.x + r.w), y: this.rng.range(r.y, r.y + r.h) };
+      if (this.isFreeSpot(p, margin)) return p;
+    }
+    return { x: r.x + r.w / 2, y: r.y + r.h };
   }
 
   private isFreeSpot(p: Vec2, margin: number): boolean {
@@ -214,6 +263,8 @@ export class GameState {
   get controlsInverted(): boolean { return this.player.invertTimer > 0; }
   /** Kontrollverlust nach dem Kotzen */
   get isVomiting(): boolean { return this.player.vomitTimer > 0; }
+  /** Gerade im Klo, im Riesenrad oder am Hau-den-Lukas */
+  get busy(): boolean { return this.player.activity !== null; }
   /** Wie oft man noch kotzen darf, bevor der Sanka kommt (inkl. dem letzten, tödlichen Mal) */
   get vomitsLeft(): number { return Math.max(0, VOMIT.maxVomits - this.stats.vomits); }
 
@@ -233,6 +284,7 @@ export class GameState {
     this.updateSpawns(dt);
     this.updateFocus();
     this.handleActions(cmd, dt);
+    this.updateActivity(dt);
     this.updateProst(dt);
     this.meters.update(dt);
     this.updateMood(dt);
@@ -258,6 +310,12 @@ export class GameState {
       p.vomitTimer = Math.max(0, p.vomitTimer - dt);
       p.vel = { x: 0, y: 0 };
       if (p.vomitTimer <= 0) this.endVomitStun();
+      return;
+    }
+
+    // Beschäftigt (Klo, Riesenrad, Lukas): man steht still
+    if (p.activity) {
+      p.vel = { x: 0, y: 0 };
       return;
     }
 
@@ -291,6 +349,10 @@ export class GameState {
     if (moving) p.facing = Math.atan2(move.y, move.x);
 
     this.collideWithWorld(p.pos, PLAYER.radius);
+    // Bierleichen liegen im Weg
+    for (const n of this.npcs) {
+      if (n.state === 'down') pushCircleOutOfCircle(p.pos, PLAYER.radius, n.pos, NPC_BEHAVIOR.bierleiche.radius);
+    }
   }
 
   private collideWithWorld(pos: Vec2, radius: number): boolean {
@@ -366,17 +428,22 @@ export class GameState {
   // --- NPCs ----------------------------------------------------------------
 
   private updateNpcs(dt: number): void {
+    const gone: number[] = [];
+    this.remplerGrace = Math.max(0, this.remplerGrace - dt);
     for (const n of this.npcs) {
       n.timer -= dt;
       n.chatterTimer -= dt;
+      n.bumpCooldown = Math.max(0, n.bumpCooldown - dt);
 
-      if (n.role === 'visitor') this.updateVisitor(n);
-      else this.updateWaitress(n, dt);
+      if (n.role === 'security') this.updateSecurity(n);
+      else if (n.role === 'waitress') this.updateWaitress(n, dt);
+      else if (n.family) { if (this.updateFamily(n)) gone.push(n.id); }
+      else this.updateVisitor(n, dt);
 
       // Bewegung zum Ziel
       const dx = n.target.x - n.pos.x, dy = n.target.y - n.pos.y;
       const d = Math.hypot(dx, dy);
-      const shouldMove = n.state !== 'idle' && n.state !== 'refill' && n.state !== 'wait' && d > 4;
+      const shouldMove = n.state !== 'idle' && n.state !== 'refill' && n.state !== 'wait' && n.state !== 'down' && d > 4;
       n.moving = shouldMove;
       if (shouldMove) {
         const step = Math.min(d, n.speed * dt);
@@ -390,7 +457,9 @@ export class GameState {
         n.stuckTimer = moved < step * 0.3 ? n.stuckTimer + dt : 0;
         if (n.stuckTimer > 1.2) {
           n.stuckTimer = 0;
-          if (n.role === 'visitor') n.target = this.randomWalkablePoint();
+          if (n.state === 'leave') n.target = { x: n.pos.x + this.rng.range(-200, 200), y: n.pos.y + this.rng.range(-200, 200) };
+          else if (n.role === 'security') n.target = this.randomPointIn(BIERGARTEN);
+          else if (n.role === 'visitor') n.target = this.randomWalkablePoint();
           else if (n.state === 'deliver' || n.state === 'toTent') {
             // Bedienung hängt fest: kurzer Umweg, danach weiter wie geplant
             n.state = n.carrying ? 'roam' : 'toTent';
@@ -401,16 +470,123 @@ export class GameState {
       }
 
       // Zufällige Sprechblasen
-      if (n.chatterTimer <= 0) {
+      if (n.chatterTimer <= 0 && n.state !== 'down') {
         n.chatterTimer = this.rng.range(EVENTS.npcChatterMin, EVENTS.npcChatterMax) * (SPAWNS.visitors / 6);
         if (dist(n.pos, this.player.pos) < 520) {
-          this.say(n.id, n.role === 'waitress' && n.carrying ? 'Maß gefällig?' : this.rng.pick(LINES.npc));
+          const line = n.role === 'waitress' && n.carrying ? 'Maß gefällig?'
+            : n.family && n.followId !== null ? this.rng.pick(LINES.family) : this.rng.pick(LINES.npc);
+          this.say(n.id, line);
         }
       }
     }
+    for (const id of gone) {
+      const i = this.npcs.findIndex((x) => x.id === id);
+      if (i >= 0) this.npcs.splice(i, 1);
+      this.events.push({ type: 'npcGone', npcId: id });
+    }
   }
 
-  private updateVisitor(n: Npc): void {
+  /** Familien bummeln gemütlich, Kinder laufen hinterher; ab 20 Uhr geht's heim. @returns true, wenn weg */
+  private updateFamily(n: Npc): boolean {
+    if (this.evening.id !== 'gemuetlich' && n.state !== 'leave') {
+      n.state = 'leave';
+      n.speed = NPC_BEHAVIOR.family.leaveSpeed * (n.followId !== null ? 1.15 : 1);
+      n.target = this.nearestExit(n.pos);
+      if (n.followId === null && this.rng.chance(0.5)) this.say(n.id, this.rng.pick(LINES.familyLeave));
+    }
+    if (n.state === 'leave') {
+      if (this.atExit(n.pos)) return true;
+      if (dist(n.pos, n.target) <= 6) n.target = this.nearestExit(n.pos);
+      return false;
+    }
+    if (n.followId !== null) {
+      const parent = this.findNpc(n.followId);
+      if (!parent) { n.followId = null; return false; }
+      const d = dist(n.pos, parent.pos);
+      n.state = d > 40 ? 'walk' : 'idle';
+      n.target = { x: parent.pos.x + 22, y: parent.pos.y + 12 };
+      return false;
+    }
+    this.updateVisitor(n, 0);
+    return false;
+  }
+
+  private nearestExit(p: Vec2): Vec2 {
+    const b = WORLD.border + NPC_RADIUS;
+    const opts = [
+      { x: b, y: p.y }, { x: WORLD.width - b, y: p.y }, { x: p.x, y: WORLD.height - b },
+    ];
+    return opts.reduce((a, c) => (dist(p, c) < dist(p, a) ? c : a));
+  }
+
+  private atExit(p: Vec2): boolean {
+    const b = WORLD.border + NPC_RADIUS + 8;
+    return p.x <= b || p.x >= WORLD.width - b || p.y >= WORLD.height - b;
+  }
+
+  /** Security: patrouilliert im Biergarten, schiebt Betrunkene raus */
+  private updateSecurity(n: Npc): void {
+    const cfg = NPC_BEHAVIOR.security;
+    const pp = this.player.pos;
+    const inGarden = pointInRect(pp, { x: BIERGARTEN.x - 60, y: BIERGARTEN.y - 60, w: BIERGARTEN.w + 120, h: BIERGARTEN.h + 120 });
+    const tooDrunk = this.meters.promille >= cfg.promille && !this.busy && !this.isVomiting;
+    if (tooDrunk && inGarden) {
+      n.state = 'chase';
+      n.speed = cfg.chaseSpeed;
+      n.target = { ...pp };
+      if (dist(n.pos, pp) < cfg.radius && n.bumpCooldown <= 0) {
+        n.bumpCooldown = cfg.cooldownSeconds;
+        const dir = normalize({ x: pp.x - n.pos.x, y: pp.y - n.pos.y });
+        // Raus aus dem Biergarten: Richtung weg von der Gartenmitte
+        const mid = { x: BIERGARTEN.x + BIERGARTEN.w / 2, y: BIERGARTEN.y + BIERGARTEN.h / 2 };
+        const out = normalize({ x: pp.x - mid.x + dir.x * 40, y: pp.y - mid.y + dir.y * 40 });
+        this.player.pos.x += out.x * cfg.push;
+        this.player.pos.y += out.y * cfg.push;
+        this.collideWithWorld(this.player.pos, PLAYER.radius);
+        this.player.slowTimer = Math.max(this.player.slowTimer, 1);
+        this.stats.securityPushes++;
+        this.events.push({ type: 'securityPush', npcId: n.id, pos: { ...this.player.pos } });
+        this.say(n.id, this.rng.pick(LINES.security));
+      }
+      return;
+    }
+    if (n.state !== 'patrol') {
+      n.state = 'patrol';
+      n.speed = cfg.patrolSpeed;
+      n.target = this.randomPointIn(BIERGARTEN);
+    }
+    if (dist(n.pos, n.target) <= 6) n.target = this.randomPointIn(BIERGARTEN);
+  }
+
+  private updateVisitor(n: Npc, dt: number): void {
+    const cfg = NPC_BEHAVIOR;
+    // Bierleiche: liegt eine Weile, steht dann wieder auf
+    if (n.state === 'down') {
+      if (n.timer <= 0) { n.state = 'idle'; n.timer = 1; }
+      return;
+    }
+    if (this.evening.id !== 'gemuetlich' && dt > 0 && this.rng.chance(cfg.bierleiche.chancePerSecond * dt)) {
+      const down = this.npcs.filter((x) => x.state === 'down').length;
+      if (down < cfg.bierleiche.maxDown) {
+        n.state = 'down';
+        n.timer = this.rng.range(cfg.bierleiche.minSeconds, cfg.bierleiche.maxSeconds);
+        n.drunk = false;
+        this.events.push({ type: 'npcDown', npcId: n.id });
+        this.say(n.id, this.rng.pick(LINES.bierleiche));
+        return;
+      }
+    }
+    // Rempler: steuert manchmal auf einen zu und rempelt bei Berührung
+    if (n.drunk && dt > 0) {
+      const pp = this.player.pos;
+      const d = dist(n.pos, pp);
+      if (n.state === 'walk' && d < cfg.rempler.seekRadius && this.rng.chance(cfg.rempler.seekChancePerSecond * dt)) {
+        n.target = { ...pp };
+      }
+      if (d < NPC_RADIUS + PLAYER.radius + 4 && n.bumpCooldown <= 0 && this.remplerGrace <= 0 && !this.busy && !this.isVomiting) {
+        this.rempel(n);
+      }
+    }
     const arrived = dist(n.pos, n.target) <= 4;
     if (n.state === 'walk' && arrived) {
       n.state = 'idle';
@@ -419,6 +595,27 @@ export class GameState {
       n.state = 'walk';
       n.target = this.randomWalkablePoint();
     }
+  }
+
+  private rempel(n: Npc): void {
+    const cfg = NPC_BEHAVIOR.rempler;
+    const p = this.player;
+    n.bumpCooldown = cfg.cooldownSeconds;
+    this.remplerGrace = cfg.playerGraceSeconds;
+    this.meters.promille = Math.max(0, this.meters.promille - cfg.promilleLoss);
+    this.meters.sprudel = Math.min(METERS.sprudel.max, this.meters.sprudel + cfg.sprudel);
+    this.meters.addKotz(cfg.kotz);
+    const dir = normalize({ x: p.pos.x - n.pos.x, y: p.pos.y - n.pos.y });
+    p.pos.x += dir.x * cfg.knockback;
+    p.pos.y += dir.y * cfg.knockback;
+    this.collideWithWorld(p.pos, PLAYER.radius);
+    // Rempler torkelt danach weiter
+    n.state = 'walk';
+    n.target = this.randomWalkablePoint();
+    this.stats.rempler++;
+    this.events.push({ type: 'rempler', npcId: n.id, pos: { ...p.pos } });
+    this.say(n.id, this.rng.pick(LINES.rempler));
+    this.say(PLAYER_ID, this.rng.pick(LINES.remplerPlayer));
   }
 
   private updateWaitress(n: Npc, _dt: number): void {
@@ -519,6 +716,8 @@ export class GameState {
     }
 
     for (const b of this.booths) b.cooldown = Math.max(0, b.cooldown - dt);
+    for (const d of this.dixis) d.cooldown = Math.max(0, d.cooldown - dt);
+    for (const x of this.attractions) x.cooldown = Math.max(0, x.cooldown - dt);
   }
 
   // --- Interaktion ---------------------------------------------------------
@@ -526,7 +725,7 @@ export class GameState {
   private updateFocus(): void {
     const pp = this.player.pos;
     let best: InteractionFocus | null = null;
-    if (this.isVomiting) { this.focus = null; return; }
+    if (this.isVomiting || this.busy) { this.focus = null; return; }
     let bestD = PLAYER.interactRadius;
 
     if (this.prost.active) {
@@ -550,6 +749,17 @@ export class GameState {
         best = { type: 'booth', id: b.id, pos: b.counter, label: FOODS[b.kind].name };
       }
     }
+    for (const d of this.dixis) {
+      const dd = dist(pp, d.door);
+      if (dd < bestD && d.cooldown <= 0) { bestD = dd; best = { type: 'dixi', id: d.id, pos: d.door, label: 'Dixi-Klo' }; }
+    }
+    for (const a of this.attractions) {
+      const dd = dist(pp, a.spot);
+      if (dd < bestD + 10 && a.cooldown <= 0) {
+        bestD = dd;
+        best = { type: a.kind, id: a.id, pos: a.spot, label: a.kind === 'riesenrad' ? 'Riesenrad' : 'Hau den Lukas' };
+      }
+    }
     for (const n of this.npcs) {
       if (n.role !== 'waitress' || !n.carrying) continue;
       const d = dist(pp, n.pos);
@@ -570,6 +780,10 @@ export class GameState {
         p.vomitTimer = Math.max(p.vomitTimer - VOMIT.mashShorten, floor);
         if (p.vomitTimer <= 0) this.endVomitStun();
       }
+      return;
+    }
+    if (this.player.activity) {
+      if (cmd.action && this.player.activity.kind === 'lukas') this.strikeLukas();
       return;
     }
     this.updateBurp(cmd.burpHeld, dt);
@@ -613,6 +827,8 @@ export class GameState {
       if (!b || b.cooldown > 0) return;
       b.cooldown = SPAWNS.boothCooldownSeconds;
       this.consumeFood(b.kind);
+    } else if (f.type === 'dixi' || f.type === 'riesenrad' || f.type === 'lukas') {
+      this.startActivity(f.type, f.id);
     } else if (f.type === 'waitress') {
       const n = this.findNpc(f.id);
       if (!n || !n.carrying) return;
@@ -674,6 +890,98 @@ export class GameState {
     this.say(PLAYER_ID, this.rng.pick(failed ? LINES.burpFail : LINES.burp));
   }
 
+  // --- Attraktionen: Dixi-Klo, Riesenrad, Hau-den-Lukas -------------------
+
+  private startActivity(kind: ActivityKind, targetId: number): void {
+    const p = this.player;
+    p.burpCharging = false;
+    let total = 0, queue = 0;
+    if (kind === 'dixi') {
+      const c = ATTRACTIONS.dixi;
+      queue = this.rng.range(c.queueMin, c.queueMax) + c.queuePerHour * Math.max(0, this.hour - ROUND.startHour)
+        + c.queuePerVisit * this.stats.dixiVisits;
+      total = queue + c.insideSeconds;
+      const d = this.dixis.find((x) => x.id === targetId);
+      if (d) d.cooldown = total + c.cooldownSeconds;
+    } else if (kind === 'riesenrad') {
+      total = ATTRACTIONS.riesenrad.rideSeconds;
+    } else {
+      total = ATTRACTIONS.lukas.maxSeconds;
+    }
+    p.activity = { kind, elapsed: 0, total, queue, targetId };
+    this.events.push({ type: 'activity', kind, stage: 'start', pos: { ...p.pos } });
+  }
+
+  private updateActivity(dt: number): void {
+    const a = this.player.activity;
+    if (!a) return;
+    const before = a.elapsed;
+    a.elapsed += dt;
+    if (a.kind === 'dixi' && before < a.queue && a.elapsed >= a.queue) {
+      this.events.push({ type: 'activity', kind: 'dixi', stage: 'inside', pos: { ...this.player.pos } });
+    }
+    if (a.kind === 'riesenrad') {
+      this.meters.addKotz(ATTRACTIONS.riesenrad.kotzPerSecond * dt);
+      this.meters.sprudel = Math.max(0, this.meters.sprudel + ATTRACTIONS.riesenrad.sprudelPerSecond * dt);
+    }
+    if (a.elapsed < a.total) return;
+    if (a.kind === 'lukas') { this.strikeLukas(); return; }
+    this.endActivity();
+  }
+
+  private endActivity(): void {
+    const a = this.player.activity;
+    if (!a) return;
+    this.player.activity = null;
+    if (a.kind === 'dixi') {
+      const c = ATTRACTIONS.dixi;
+      this.meters.addKotz(c.kotz);
+      this.meters.sprudel = Math.max(0, this.meters.sprudel + c.sprudel);
+      this.meters.misch = Math.max(0, this.meters.misch + c.misch);
+      this.stats.dixiVisits++;
+      this.say(PLAYER_ID, this.rng.pick(LINES.dixi));
+    } else if (a.kind === 'riesenrad') {
+      const r = this.attractions.find((x) => x.id === a.targetId);
+      if (r) r.cooldown = ATTRACTIONS.riesenrad.cooldownSeconds;
+      this.stats.riesenradRides++;
+      this.say(PLAYER_ID, this.rng.pick(LINES.riesenrad));
+    } else {
+      const l = this.attractions.find((x) => x.id === a.targetId);
+      if (l) l.cooldown = ATTRACTIONS.lukas.cooldownSeconds;
+    }
+    this.events.push({ type: 'activity', kind: a.kind, stage: 'end', pos: { ...this.player.pos } });
+  }
+
+  /** Kraft (0–1) der Hau-den-Lukas-Nadel: läuft hoch und runter, betrunken schneller */
+  get lukasPower(): number {
+    const a = this.player.activity;
+    if (!a || a.kind !== 'lukas') return 0;
+    return lukasPowerAt(a.elapsed, this.meters.promille);
+  }
+
+  private strikeLukas(): void {
+    const a = this.player.activity;
+    if (!a || a.kind !== 'lukas') return;
+    const c = ATTRACTIONS.lukas;
+    const power = a.elapsed >= a.total ? 0 : this.lukasPower;
+    let prize: 'heart' | 'mass' | 'none' = 'none';
+    if (power >= c.bellAt && !this.player.lebkuchenherz) prize = 'heart';
+    else if (power >= c.prizeAt) prize = 'mass';
+    this.meters.addKotz(c.effortKotz);
+    this.stats.bestLukas = Math.max(this.stats.bestLukas, power);
+    if (power >= c.bellAt) this.stats.lukasBells++;
+    const spot = this.attractions.find((x) => x.id === a.targetId)?.spot ?? this.player.pos;
+    if (prize === 'heart') this.player.lebkuchenherz = true;
+    if (prize === 'mass') {
+      this.pickups.push({
+        id: this.nextId++, kind: 'drink', drink: 'mass', pos: { x: spot.x + 40, y: spot.y + 10 }, source: 'field', ttl: 20,
+      });
+    }
+    this.events.push({ type: 'lukasStrike', power, prize, pos: { ...spot } });
+    this.say(PLAYER_ID, this.rng.pick(power >= c.bellAt ? LINES.lukasBell : power >= c.prizeAt ? LINES.lukasMid : LINES.lukasWeak));
+    this.endActivity();
+  }
+
   /** Abstand des Prost-Schlags (s) zum nächsten Takt-Schlag, frühestens ab dem 1. Schlag */
   get prostBeatOffset(): number {
     const period = 60 / EVENTS.prost.beatBpm;
@@ -704,7 +1012,7 @@ export class GameState {
       }
       return;
     }
-    if (this.isVomiting) return;
+    if (this.isVomiting || this.busy) return;
     this.nextProstIn -= dt;
     if (this.nextProstIn > 0) return;
     this.nextProstIn = this.rng.range(EVENTS.prost.minInterval, EVENTS.prost.maxInterval) * this.evening.prostIntervalFactor;
@@ -713,6 +1021,7 @@ export class GameState {
     let best: Npc | null = null;
     let bestD = 480;
     for (const n of this.npcs) {
+      if (n.state === 'down' || n.state === 'leave' || n.role === 'security') continue;
       const d = dist(n.pos, this.player.pos);
       if (d < bestD) { bestD = d; best = n; }
     }
@@ -757,6 +1066,10 @@ export class GameState {
     if (next.id !== this.evening.id) {
       this.applyEvening(next);
       this.events.push({ type: 'phaseChange', phase: next.id });
+      const share = NPC_BEHAVIOR.rempler.share[next.id];
+      for (const n of this.npcs) {
+        if (n.role === 'visitor' && !n.family && !n.drunk && n.state !== 'down') n.drunk = this.rng.chance(share);
+      }
       // Neuer Rhythmus: der nächste "Prost!"-Ruf kommt nicht später als im neuen Takt
       this.nextProstIn = Math.min(this.nextProstIn, EVENTS.prost.maxInterval * next.prostIntervalFactor);
     }
@@ -769,7 +1082,14 @@ export class GameState {
 
   private checkEnd(): void {
     const cause = this.meters.checkVomit();
-    if (cause) {
+    if (cause && this.player.lebkuchenherz && this.stats.vomits + 1 >= VOMIT.maxVomits) {
+      // Das Lebkuchenherz rettet vor dem Sanka: Kotzen ja, aber es zählt nicht
+      this.player.lebkuchenherz = false;
+      this.stats.heartSaves++;
+      this.events.push({ type: 'heartSaved', pos: { ...this.player.pos } });
+      this.say(PLAYER_ID, this.rng.pick(LINES.heart));
+      this.startVomitStun(cause);
+    } else if (cause) {
       this.stats.vomits++;
       if (this.stats.vomits >= VOMIT.maxVomits) {
         this.events.push({ type: 'vomit', cause, pos: { ...this.player.pos } });
@@ -784,7 +1104,12 @@ export class GameState {
   /** Gekotzt, aber noch nicht abgeholt: Erleichterung, Verlust und kurzer Kontrollverlust. */
   private startVomitStun(cause: VomitCause): void {
     const p = this.player;
-    this.meters.relieveAfterVomit(this.stats.vomits);
+    if (p.activity) {
+      const kind = p.activity.kind;
+      p.activity = null;
+      this.events.push({ type: 'activity', kind, stage: 'end', pos: { ...p.pos } });
+    }
+    this.meters.relieveAfterVomit(Math.max(1, this.stats.vomits));
     p.vomitTimer = VOMIT.stunSeconds;
     p.vomitElapsed = 0;
     p.boostTimer = 0;

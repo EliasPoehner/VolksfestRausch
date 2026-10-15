@@ -31,6 +31,7 @@ export class HudScene extends Phaser.Scene {
   private shown = { kotz: 0, sprudel: 0, misch: 0, magen: 0 };
   private onPause = (p: boolean) => this.pauseLayer.setVisible(p);
   private t = 0;
+  private heartSavedAt = -10;
 
   constructor() { super('Hud'); }
 
@@ -130,6 +131,7 @@ export class HudScene extends Phaser.Scene {
     const lives = '🤢'.repeat(s.vomitsLeft) + '💀'.repeat(Math.max(0, 3 - s.vomitsLeft));
     const buffs = [
       p.boostTimer > 0 ? '⚡ Kick' : '', p.prostBoostTimer > 0 ? '🥂 Prost ×2' : '', s.prostCombo > 0 ? `🎺 Combo ×${s.prostCombo}` : '',
+      p.lebkuchenherz ? '💖 Lebkuchenherz' : '',
     ].filter(Boolean).join('  ');
     this.statusText.setText(`🍺 ${s.stats.drinks}   💨 ${s.stats.burps}   ·   ${burp}   ·   Sanka-Karte: ${lives}${buffs ? '   ·   ' + buffs : ''}`);
     this.statusText.setColor(p.burpCooldown > 0 ? '#cfd8e3' : '#8fd3ff');
@@ -138,6 +140,14 @@ export class HudScene extends Phaser.Scene {
     let alert = '';
     if (s.phase !== 'playing') alert = '';
     else if (s.isVomiting) alert = `Reiß di zam!  ${this.game_.touch ? 'Trink-Button' : 'E'} hämmern!`;
+    else if (p.activity) {
+      const a = p.activity;
+      const left = Math.max(0, a.total - a.elapsed).toFixed(1).replace('.', ',');
+      const key = this.game_.touch ? 'Trink-Button' : 'E';
+      if (a.kind === 'dixi') alert = a.elapsed < a.queue ? `Schlange am Klo… noch ${left} s` : 'Besetzt! Erleichterung…';
+      else if (a.kind === 'riesenrad') alert = `Riesenrad: durchschnaufen… ${left} s`;
+      else alert = `Hau den Lukas! ${key}, wenn die Nadel ganz oben is!  (${Math.round(s.lukasPower * 100)} %)`;
+    }
     else if (s.isWarning) alert = 'Mir is so schlecht… iss was!';
     else if (s.controlsInverted) alert = 'Steuerung verdreht!';
     else if (p.onCarousel) alert = 'Karussell! Schnell runter!';
@@ -172,9 +182,12 @@ export class HudScene extends Phaser.Scene {
       if (p) this.flash(`${p.banner}\n${p.subline}`);
     }
     if (e.type === 'gameEnd' && e.reason === 'zapfenstreich') this.flash('ZAPFENSTREICH!\nGeschafft!');
+    if (e.type === 'heartSaved') this.heartSavedAt = this.t;
     if (e.type === 'vomitSurvived') {
       const left = e.max - e.count;
-      this.flash(`${e.cause === 'sprudel' ? 'Zu viel Sprudel!' : e.cause === 'misch' ? 'Zu wild gemischt!' : 'Des war oans z\'vui…'}\n${left === 1 ? 'Noch einmal und der Sanka kommt!' : `Noch ${left}× bis zum Sanka`}`);
+      const first = this.t - this.heartSavedAt < 0.5 ? 'Des Lebkuchenherz hod di grett!'
+        : e.cause === 'sprudel' ? 'Zu viel Sprudel!' : e.cause === 'misch' ? 'Zu wild gemischt!' : 'Des war oans z\'vui…';
+      this.flash(`${first}\n${left === 1 ? 'Noch einmal und der Sanka kommt!' : `Noch ${left}× bis zum Sanka`}`);
     }
     if (e.type === 'vomit') this.flash(e.cause === 'sprudel' ? 'Zu viel Sprudel!' : e.cause === 'misch' ? 'Zu wild gemischt!' : 'Des war oans z\'vui…');
   }
